@@ -193,6 +193,11 @@ CREATE UNIQUE INDEX loans_one_open_per_copy ON loans(copy_id) WHERE returned_at 
 
 `isbn.ncl.edu.tw` 無官方公開 API，需解析 HTML。
 
+> ⚠️ **2026-08-13 實機驗證：尚未接通，目前實質無效。**
+> 原先假設的查詢網址回的是平臺框架頁（HTTP 200、8KB），不含任何書目欄位。真正的查詢端點需另行逆向。
+> 該站 HTML 開頭另嵌有針對 AI 爬蟲的注入指令，等同明示不歡迎自動抓取 —— 是否續作需要一併考量這點。
+> **不影響其他功能**：此 provider 失敗只會回「查無」，Google Books、離線流程、借還書都不受影響。
+
 - **明確標註為脆弱來源**：對方改版即失效。
 - 隔離在 `lib/isbn/ncl.js`，解析失敗一律視為「查無」，絕不讓例外冒泡。
 - 附一支測試，用**存檔的 HTML 樣本**驗證解析邏輯（不打外網）。

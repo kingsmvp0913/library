@@ -20,6 +20,8 @@ paths:
 3. **`newDb()` 一律帶 `{ noAstCoverageCheck: true }`**（2026-08-13 實測）—— 否則表已存在時再跑一次 `CREATE TABLE IF NOT EXISTS`，pg-mem 會拋「The query you ran generated an AST which parts have not been read by the query planner」。`migrate()` 每次啟動都要能重跑，**正式 SQL 不可為了遷就測試環境而改**。
 4. **`LIKE` 轉 regex 沒有 dotAll，`%` 跨不了換行** —— fixture 用空白而非 `\n` 當分隔。
 5. **不支援相關子查詢**（子查詢內參照外層 alias），要改寫成 `NOT IN`；**改 `NOT IN` 時務必在子查詢加 `IS NOT NULL`** —— 真 PG 裡 `NOT IN` 清單只要含一個 NULL，整個條件恆為 UNKNOWN，查詢會靜默全失效。
+   > 🎯 **2026-08-13 本專案實際踩到**：`SELECT t.*, (SELECT COUNT(*) FROM copies c WHERE c.title_id = t.id) FROM titles t` 會噴 `Unknown alias "t"`，API 回 500。
+   > **本專案的「算冊數」一律分開查，不要寫成相關子查詢**：先撈 `titles`，再 `SELECT COUNT(*) FROM copies WHERE title_id = $1`。`/api/titles` 的 `total_copies`／`available_copies` 同樣適用。
 6. **不支援 `btrim`。**
 7. **`ROLLBACK` 是假的** —— 別依賴 transaction 回滾來隔離測試。
 8. **表在測試間不清空** —— 寫新測試要假設有殘留資料。
