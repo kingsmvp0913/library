@@ -4,6 +4,37 @@ const db = require('../db.js');
 const router = express.Router();
 const STATUSES = ['in', 'out', 'lost', 'repair'];
 
+/**
+ * 某個書櫃上有哪些冊。盤點時要一眼看出哪幾本不在架上、在誰手上。
+ * 一定要帶 shelf 參數——沒帶就整包倒出來，畫面會被幾千筆塞爆。
+ */
+router.get('/', async (req, res, next) => {
+  try {
+    if (!req.query.shelf) {
+      return res.status(400).json({ error: '請指定要看哪一個書櫃' });
+    }
+    const shelfId = Number(req.query.shelf);
+    const { rows } = await db.query(
+      `SELECT cp.id, cp.barcode, cp.status, cp.title_id, t.title, t.authors, t.cover_path
+         FROM copies cp JOIN titles t ON t.id = cp.title_id
+        WHERE cp.shelf_id = $1 ORDER BY cp.barcode`, [shelfId]);
+    if (!rows.length) return res.json([]);
+
+    // 借出中的冊要講得出在誰手上。分開查再合併，不 JOIN loans——
+    // loans 上的 partial index 會讓 JOIN 漏掉列（見 .claude/rules/testing.md）。
+    const open = await db.query(
+      `SELECT l.copy_id, b.name AS borrower_name, l.borrowed_at
+         FROM loans l JOIN borrowers b ON b.id = l.borrower_id
+        WHERE l.returned_at IS NULL`);
+    const byCopy = new Map(open.rows.map((r) => [r.copy_id, r]));
+    res.json(rows.map((c) => ({
+      ...c,
+      borrower_name: byCopy.get(c.id)?.borrower_name ?? null,
+      borrowed_at: byCopy.get(c.id)?.borrowed_at ?? null,
+    })));
+  } catch (err) { next(err); }
+});
+
 router.put('/:id', async (req, res, next) => {
   try {
     // 編號貼在實體書上，改了就跟現實對不起來——沒有「重新編號」這回事。

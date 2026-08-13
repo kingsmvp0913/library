@@ -111,9 +111,17 @@ router.post('/returns', async (req, res, next) => {
  */
 router.get('/loans', async (req, res, next) => {
   try {
-    const where = req.query.open === '1' ? 'WHERE returned_at IS NULL' : '';
+    const conds = [];
+    const params = [];
+    if (req.query.open === '1') conds.push('returned_at IS NULL');
+    if (req.query.borrower) {
+      // borrower_id 不是 partial index 的欄位，用等值查詢是安全的
+      params.push(Number(req.query.borrower));
+      conds.push(`borrower_id = $${params.length}`);
+    }
+    const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
     const loans = await db.query(
-      `SELECT * FROM loans ${where} ORDER BY borrowed_at DESC, id DESC`
+      `SELECT * FROM loans ${where} ORDER BY borrowed_at DESC, id DESC`, params
     );
     if (!loans.rows.length) return res.json([]);
 

@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const express = require('express');
 const db = require('../db.js');
 const { toCsv, parseCsv } = require('../lib/csv.js');
@@ -5,9 +7,10 @@ const { nextBarcode } = require('../lib/barcode-no.js');
 
 const router = express.Router();
 
-const BACKUP_VERSION = 1;
-// 依 FK 相依順序排列：還原時照這個順序建，清空時倒著刪。
-const TABLES = ['categories', 'shelves', 'titles', 'copies', 'borrowers', 'loans', 'counters'];
+// 備份的產生與保留邏輯集中在 lib/backup.js——啟動時的自動備份也用同一份，
+// 兩邊各寫一份遲早會漂移成「手動備份得回來、自動備份還原不了」。
+const { makeBackup, listBackups, TABLES, BACKUP_DIR } = require('../lib/backup.js');
+const logger = require('../lib/logger.js');
 
 function sendCsv(res, filename, csv) {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -89,13 +92,39 @@ router.get('/export/loans.csv', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-async function makeBackup() {
-  const tables = {};
-  for (const t of TABLES) {
-    tables[t] = (await db.query(`SELECT * FROM ${t}`)).rows;
+router.get('/logs', (req, res) => {
+  res.json({ files: logger.listLogs().reverse() });
+});
+
+router.get('/logs/:file', (req, res) => {
+  const name = String(req.params.file);
+  // 只接受自己產生的檔名格式，杜絕 ../ 之類的路徑穿越
+  if (!/^library-\d{4}-\d{2}-\d{2}\.log$/.test(name)) {
+    return res.status(400).json({ error: '不是有效的紀錄檔名' });
   }
-  return { version: BACKUP_VERSION, exportedAt: new Date().toISOString(), tables };
-}
+  const full = path.join(logger.LOG_DIR, name);
+  if (!fs.existsSync(full)) return res.status(404).json({ error: '找不到這份紀錄' });
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
+  res.sendFile(full);
+});
+
+router.get('/backups', (req, res) => {
+  // 最新的排前面，使用者要救資料時第一個看到的就是最近的
+  res.json({ files: listBackups().reverse() });
+});
+
+router.get('/backups/:file', (req, res) => {
+  const name = String(req.params.file);
+  // 只接受自己產生的檔名格式，杜絕 ../ 之類的路徑穿越
+  if (!/^auto-[0-9T-]+\.json$/.test(name)) {
+    return res.status(400).json({ error: '不是有效的備份檔名' });
+  }
+  const full = path.join(BACKUP_DIR, name);
+  if (!fs.existsSync(full)) return res.status(404).json({ error: '找不到這份備份' });
+  res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
+  res.sendFile(full);
+});
 
 router.get('/export/backup.json', async (req, res, next) => {
   try {

@@ -42,8 +42,22 @@ try {
 const { createApp } = require(path.join(ROOT, 'server', 'index.js'));
 const { migrate } = require(path.join(ROOT, 'server', 'db.js'));
 
+const { saveAutoBackup } = require(path.join(ROOT, 'server', 'lib', 'backup.js'));
+const logger = require(path.join(ROOT, 'server', 'lib', 'logger.js'));
+
 migrate()
-  .then(() => {
+  .then(async () => {
+    logger.pruneLogs();
+    logger.info(`系統啟動（埠 ${port}）`);
+    // 每次啟動自動留一份備份。使用者不會記得手動備份，而資料沒了是不可逆的。
+    // 失敗只印一行警告——少一層保險，總比整套開不起來好。
+    try {
+      const r = await saveAutoBackup();
+      if (r.file) console.log(`[備份] 已自動保留一份：data\\backups\\${r.file}`);
+    } catch (err) {
+      console.warn('[備份] 這次沒有備份成功（不影響使用）：' + err.message);
+    }
+
     createApp().listen(port, () => {
       console.log(`圖書系統已啟動：http://localhost:${port}`);
       console.log('（關閉這個黑色視窗就會停止系統）');
@@ -52,5 +66,7 @@ migrate()
   .catch((err) => {
     console.error('啟動失敗：' + err.message);
     console.error('請確認 PostgreSQL 已啟動，且 data\\config.json 的 DATABASE_URL 帳號密碼正確。');
+    // 開不起來的原因最需要留下來——使用者這時只看得到一閃而過的黑色視窗
+    logger.error('啟動失敗：' + err.message);
     process.exit(1);
   });

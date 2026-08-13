@@ -249,10 +249,38 @@ async function api(method, url, body) {
   check('可以再啟用',
     (await api('GET', '/api/borrowers')).body.some((b) => b.id === borrower.body.id));
 
+  console.log('\n[17] 明細查詢（全站搜尋點下去要真的有東西）');
+  const mingLoans = await api('GET', `/api/loans?borrower=${borrower.body.id}`);
+  check('查得到這個人的借閱紀錄', mingLoans.body.length > 0, `${mingLoans.body.length} 筆`);
+  check('借閱紀錄帶得出書名', !!mingLoans.body[0]?.title, mingLoans.body[0]?.title);
+  const mingOpen = await api('GET', `/api/loans?borrower=${borrower.body.id}&open=1`);
+  check('可以只看未歸還的',
+    mingOpen.body.length <= mingLoans.body.length,
+    `未歸還 ${mingOpen.body.length} / 全部 ${mingLoans.body.length}`);
+
+  const shelfCopies = await api('GET', `/api/copies?shelf=${top.body.id}`);
+  check('查得到這個書櫃上的書', shelfCopies.body.length > 0, `${shelfCopies.body.length} 冊`);
+  check('書櫃明細帶得出書名與狀態',
+    !!shelfCopies.body[0]?.title && !!shelfCopies.body[0]?.status);
+  check('沒帶 shelf 參數不可以整包倒出來',
+    (await api('GET', '/api/copies')).status === 400);
+
+  console.log('\n[18] 自動備份與系統紀錄');
+  const backups = await api('GET', '/api/backups');
+  check('列得出自動備份（啟動時產生）', backups.body.files.length > 0,
+    `${backups.body.files.length} 份`);
+  const logs = await api('GET', '/api/logs');
+  check('列得出系統紀錄', logs.body.files.length > 0, `${logs.body.files.length} 個`);
+  // 檔名沒驗就是路徑穿越，使用者整台電腦都讀得到
+  check('紀錄檔名不合格式時擋下（400）',
+    (await api('GET', '/api/logs/library-9999.log')).status === 400);
+  check('備份檔名不合格式時擋下（400）',
+    (await api('GET', '/api/backups/whatever.json')).status === 400);
+
   // 還原會清掉整個資料庫，預設不跑——這台機器上可能有使用者手動輸入的資料。
   // 要驗證還原路徑請加參數：node scripts/e2e-smoke.js --include-restore
   if (process.argv.includes('--include-restore')) {
-    console.log('\n[17] 還原（原地還原剛才那份備份）');
+    console.log('\n[19] 還原（原地還原剛才那份備份）');
     const before = (await api('GET', '/api/titles')).body.length;
     const r = await api('POST', '/api/import/restore',
       { backup: backup.body, confirm: true });
@@ -262,7 +290,7 @@ async function api(method, url, body) {
     check('還原後書目數回到備份當時', after === backup.body.tables.titles.length,
       `還原前畫面 ${before} 筆、備份 ${backup.body.tables.titles.length} 筆、還原後 ${after} 筆`);
   } else {
-    console.log('\n[17] 還原 —— 已跳過（會清空資料庫）。要驗請加 --include-restore');
+    console.log('\n[19] 還原 —— 已跳過（會清空資料庫）。要驗請加 --include-restore');
   }
 
   console.log(`\n=== 結果：${pass} 通過、${fail} 失敗 ===`);

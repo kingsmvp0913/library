@@ -21,9 +21,11 @@ function createApp() {
   app.use('/api', require('./routes/data-io.js'));
   app.use('/api', require('./routes/settings.js'));
 
-  // 統一錯誤處理：不把 stack trace 丟給前端
+  // 統一錯誤處理：不把 stack trace 丟給前端，但要留一份給維護者查。
+  // 使用者只會說「不能用了」，沒有這行紀錄就沒有任何線索。
   app.use((err, req, res, _next) => {
     console.error('[API]', err.message);
+    require('./lib/logger.js').error(`${req.method} ${req.originalUrl} — ${err.message}`);
     res.status(500).json({ error: '系統錯誤：' + err.message });
   });
 

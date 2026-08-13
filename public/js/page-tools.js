@@ -79,4 +79,39 @@ document.getElementById('doRestore').addEventListener('click', async (e) => {
   }
 });
 
+/**
+ * 把檔案清單畫成可下載的連結。
+ * 自動備份與系統紀錄都只是「一堆檔案」，共用同一段就好。
+ */
+async function paintFileList(hostId, url, hrefBase, emptyText, labelOf) {
+  const host = document.getElementById(hostId);
+  if (!host) return;
+  try {
+    const { files } = await Api.get(url);
+    if (!files.length) { host.textContent = emptyText; return; }
+    host.innerHTML = `<table><tbody>${files.map((f) => `
+      <tr><td>${esc(labelOf(f))}</td>
+        <td style="width:1%"><a href="${hrefBase}/${encodeURIComponent(f)}">
+          <button>下載</button></a></td></tr>`).join('')}</tbody></table>`;
+  } catch (err) {
+    host.textContent = '讀取失敗：' + err.message;
+  }
+}
+
+// 檔名是機器格式（auto-2026-08-13T09-30-00.json），畫面上要給人看得懂的時間
+function backupLabel(f) {
+  const m = f.match(/^auto-(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})/);
+  return m ? `${m[1]}/${m[2]}/${m[3]} ${m[4]}:${m[5]}` : f;
+}
+
+function logLabel(f) {
+  const m = f.match(/^library-(\d{4})-(\d{2})-(\d{2})\.log$/);
+  return m ? `${m[1]}/${m[2]}/${m[3]}` : f;
+}
+
+paintFileList('backupList', '/api/backups', '/api/backups',
+  '還沒有自動備份（系統啟動且已有館藏資料時才會產生）。', backupLabel);
+paintFileList('logList', '/api/logs', '/api/logs',
+  '目前沒有任何紀錄。', logLabel);
+
 createOmniSearch(document.getElementById('omni'), document.getElementById('omniPanel'));

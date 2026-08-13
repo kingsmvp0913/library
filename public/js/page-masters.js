@@ -4,9 +4,57 @@ const RESOURCES = {
     // 代碼由系統自動產生，不顯示也不讓使用者填——他只想填「A櫃」這個名字。
     columns: [{ key: 'name', label: '書櫃名稱' }],
     fields: [{ key: 'name', label: '書櫃名稱（例：A櫃、繪本區）', required: true }],
+    // 盤點時要一眼看出這個櫃子該有哪些書、哪幾本現在不在架上。
+    detail: {
+      heading: (r) => `${r.name} 上的書`,
+      load: (id) => Api.get(`/api/copies?shelf=${id}`),
+      render: (rows) => {
+        if (!rows.length) return '<p class="muted">這個書櫃目前沒有放任何東西。</p>';
+        const away = rows.filter((c) => c.status !== 'in');
+        return `
+          <p class="muted">共 ${rows.length} 冊，其中 ${away.length} 冊不在架上。</p>
+          <table><thead><tr><th>編號</th><th>書名</th><th>狀態</th></tr></thead><tbody>
+          ${rows.map((c) => `<tr>
+            <td>${esc(c.barcode)}</td>
+            <td>${esc(c.title)}</td>
+            <td>${c.status === 'in'
+              ? '<span class="badge badge-in">在架</span>'
+              : c.status === 'out'
+                ? `<span class="badge badge-out">${esc(c.borrower_name ?? '借出中')}</span>`
+                : esc(c.status === 'lost' ? '遺失' : '修繕中')}</td>
+          </tr>`).join('')}
+          </tbody></table>`;
+      },
+    },
   },
   borrowers: {
     api: '/api/borrowers', title: '借閱人', addLabel: '新增借閱人',
+    // 老師最常問的就是「小明借了什麼還沒還」，讓他點一下就看得到。
+    detail: {
+      heading: (r) => `${r.name} 的借閱狀況`,
+      load: (id) => Api.get(`/api/loans?borrower=${id}`),
+      render: (rows) => {
+        if (!rows.length) return '<p class="muted">這位借閱人還沒有借過任何東西。</p>';
+        const open = rows.filter((r) => !r.returned_at);
+        const done = rows.filter((r) => r.returned_at);
+        const line = (r) => `<tr><td>${esc(r.barcode)}</td><td>${esc(r.title)}</td>
+          <td class="muted">${new Date(r.borrowed_at).toLocaleDateString('zh-TW')}</td>
+          <td>${r.returned_at
+            ? new Date(r.returned_at).toLocaleDateString('zh-TW')
+            : '<span class="badge badge-out">未歸還</span>'}</td></tr>`;
+        return `
+          <h4>目前手上有 ${open.length} 本</h4>
+          ${open.length
+            ? `<table><thead><tr><th>編號</th><th>書名</th><th>借出</th><th>狀態</th></tr></thead>
+               <tbody>${open.map(line).join('')}</tbody></table>`
+            : '<p class="muted">手上沒有未歸還的東西。</p>'}
+          <h4 style="margin-top:18px">借閱紀錄（共 ${rows.length} 筆）</h4>
+          ${done.length
+            ? `<table><thead><tr><th>編號</th><th>書名</th><th>借出</th><th>歸還</th></tr></thead>
+               <tbody>${done.map(line).join('')}</tbody></table>`
+            : '<p class="muted">還沒有已歸還的紀錄。</p>'}`;
+      },
+    },
     columns: [
       { key: 'name', label: '姓名' },
       { key: 'class_name', label: '班級' },
@@ -68,6 +116,7 @@ function rowHtml(r) {
   return `<tr${inactive ? ' style="opacity:.5"' : ''}>
     ${cfg.columns.map((c) => `<td>${esc(cellValue(r, c))}</td>`).join('')}
     <td>
+      ${cfg.detail ? `<button class="detail-btn" data-id="${r.id}">明細</button>` : ''}
       <button class="edit-btn" data-id="${r.id}">編輯</button>
       ${cfg.canDeactivate
         ? `<button class="toggle-btn" data-id="${r.id}" data-active="${r.active !== false}">
@@ -87,7 +136,42 @@ async function load() {
   bindRowButtons();
 }
 
+/**
+ * 顯示某一筆的明細。
+ * 全站搜尋會連到 /borrowers.html?id=、/shelves.html?id=，
+ * 原本那兩頁完全不讀 URL 參數，點過去等於什麼都沒發生——這個函式就是接收端。
+ */
+async function showDetail(id) {
+  const host = document.getElementById('detail');
+  if (!host || !cfg.detail) return;
+  const row = rows.find((r) => r.id === id);
+  if (!row) {
+    // 停用的借閱人不在預設清單裡，從搜尋跳過來時要能自己補上
+    host.innerHTML = '<div class="card"><p class="muted">找不到這筆資料，'
+      + '可能已被刪除或停用（勾選「顯示已停用的」再試）。</p></div>';
+    return;
+  }
+  host.innerHTML = `<div class="card"><h3>${esc(cfg.detail.heading(row))}</h3>
+    <p class="muted">載入中…</p></div>`;
+  try {
+    const data = await cfg.detail.load(id);
+    host.innerHTML = `<div class="card">
+      <div class="row"><h3 style="margin:0">${esc(cfg.detail.heading(row))}</h3>
+        <button id="closeDetail" style="margin-left:auto">關閉</button></div>
+      ${cfg.detail.render(data, row)}
+    </div>`;
+    document.getElementById('closeDetail').addEventListener('click', () => {
+      host.innerHTML = '';
+    });
+  } catch (err) {
+    host.innerHTML = `<div class="card"><p class="muted">${esc(err.message)}</p></div>`;
+  }
+}
+
 function bindRowButtons() {
+  document.querySelectorAll('.detail-btn').forEach((b) => b.addEventListener('click', () => {
+    showDetail(Number(b.dataset.id));
+  }));
   document.querySelectorAll('.edit-btn').forEach((b) => b.addEventListener('click', () => {
     editingId = Number(b.dataset.id);
     load();
@@ -173,4 +257,9 @@ function renderAddForm() {
 
 createOmniSearch(document.getElementById('omni'), document.getElementById('omniPanel'));
 renderAddForm();
-load();
+
+load().then(() => {
+  // 從全站搜尋跳過來時（/borrowers.html?id=123）直接展開那一筆
+  const preset = new URLSearchParams(location.search).get('id');
+  if (preset) showDetail(Number(preset));
+});
