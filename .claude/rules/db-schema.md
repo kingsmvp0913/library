@@ -13,4 +13,5 @@ paths:
 4. **設定類數值用 `??` 取預設值，不要用 `||`** —— `(limit || 10)` 會讓「設 0」被預設值蓋掉，功能表面存在卻永遠關不掉。
 5. **一次性資料正規化 migration 必須 idempotent**（每次啟動都會跑），且不能用 `btrim`（pg-mem 不支援）。
 6. **`copies.barcode` 與 `loans_one_open_per_copy` 的唯一性約束由資料庫保證，不可只靠應用層。** 見 `.claude/rules/testing.md` 第 2 條。
-7. **本機 PostgreSQL 有 `postgresql-x64-10/16/17` 三個服務同時執行，port 5416 對應哪一個必須實測確認**，不要假設。連線字串放 `.env` 的 `DATABASE_URL`。
+7. **連線字串放 `data/config.json` 的 `DATABASE_URL`，不是 `.env`，也不要寫死在程式裡。** 使用者端由 `安裝.bat` 以 winget 裝 PostgreSQL 17（預設 `localhost:5432`）；但**開發機已有 `postgresql-x64-10/16/17` 三個服務在跑**，5432 可能被佔用或密碼不同——改 `config.json` 即可，不要因此改動預設值或程式碼。
+8. **`setup.js` 建資料庫要先連 `postgres` 系統庫再 `CREATE DATABASE`**，且必須先查 `pg_database` 確認不存在才建（重跑 `安裝.bat` 不能炸）。整個 setup 流程必須 idempotent。

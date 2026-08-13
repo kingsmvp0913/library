@@ -13,6 +13,7 @@
 - 使用者：園內老師，**單機使用**（`http://localhost:3940`）。
 - 不做登入、不做權限分層、不對外網開放。
 - **這台機器可能沒有網路** —— 系統必須在離線時正常運作，只是不自動補書目資料。
+- **使用者不懂電腦** —— 安裝、啟動、更新一律是「雙擊一個檔」，不得要求使用者開命令列、改設定檔或自行安裝相依套件。見 §11。
 
 ## 2. 技術棧
 
@@ -22,7 +23,7 @@
 |---|---|
 | Runtime | Node.js v24 |
 | 後端 | Express 4 |
-| 資料庫 | PostgreSQL（本機 Windows 原生服務，port 5416），資料庫名 `library` |
+| 資料庫 | PostgreSQL 17（由 `安裝.bat` 以 winget 自動安裝），資料庫名 `library`，連線字串存 `data/config.json` |
 | 前端 | 原生 JS / CSS，無框架，多頁式 |
 | 測試 | jest `--runInBand` + pg-mem + supertest |
 | 啟動 | `npm start` → `http://localhost:3940` |
@@ -31,6 +32,15 @@
 
 ```
 library/
+├── 安裝.bat                # 第一次使用點這個（winget 裝 Node/PG/Git → npm install → 建 DB）
+├── 啟動.bat                # 之後每次都點這個（git pull 自動更新 → 起 server → 開瀏覽器）
+├── scripts/
+│   ├── setup.js            # 安裝編排：建 config.json → CREATE DATABASE → migrate → 種子資料
+│   ├── start.js            # 啟動編排：讀 config → 關舊進程 → 開瀏覽器 → 起 server
+│   └── free-port.js        # 關掉佔用該埠的舊進程
+├── data/
+│   ├── config.json         # DATABASE_URL / PORT / GOOGLE_BOOKS_API_KEY（不進版控）
+│   └── covers/             # 封面圖落檔（不進版控）
 ├── server/
 │   ├── index.js            # Express 進入點
 │   ├── db.js               # 連線池 + schema 初始化
@@ -51,7 +61,6 @@ library/
 │       ├── scan-input.js   # 掃碼輸入（槍 + 鏡頭）
 │       ├── omnisearch.js   # 全站自動完成
 │       └── barcode.js      # Code128 SVG 產生（無外部依賴）
-├── data/covers/            # 封面圖落檔（gitignore）
 └── docs/
 ```
 
@@ -175,7 +184,7 @@ CREATE UNIQUE INDEX loans_one_open_per_copy ON loans(copy_id) WHERE returned_at 
 
 **必須自備金鑰**。實測 2026-08-13：匿名呼叫回 HTTP 429「Quota exceeded」——免金鑰配額是全球共用的，隨時可能爆。
 
-- 金鑰放 `.env`（`GOOGLE_BOOKS_API_KEY`），**不進版控**（附 `.env.example` 當範本）。用 Node 24 原生的 `node --env-file=.env` 讀取，不引入 `dotenv` 依賴。
+- 金鑰放 `data/config.json` 的 `GOOGLE_BOOKS_API_KEY` 欄位（`data/` 不進版控）。**所有設定集中在同一個檔**，不另開 `.env` —— 對不懂電腦的使用者，「要改設定就開 `data/config.json`」比兩個地方好記。
 - 未設定金鑰時系統照常運作，只是跳過此 provider 並在設定頁顯示提示。
 
 ### 5.3 台灣 ISBN 全國新書資訊網（備用）
@@ -293,7 +302,90 @@ GET    /api/search/suggest?q=
   - 搜尋自動完成四類都有結果且各自限量
 - 測試輸出精簡：`npm run test:quiet`（`--runInBand --silent --noStackTrace --no-color`）。
 
-## 11. 非目標（本版不做）
+## 11. 安裝、啟動與更新（一鍵）
+
+**設計來源**：照抄 `C:\pmis` 已在生產使用的模式（`安裝.bat` + `啟動.bat` + `scripts/setup.js` + `scripts/start.js`）。使用者只會看到兩個檔。
+
+### 11.1 使用者視角
+
+| 情境 | 動作 |
+|---|---|
+| 第一次使用 | 雙擊 **`安裝.bat`**，等它跑完 |
+| 每天使用 | 雙擊 **`啟動.bat`**，瀏覽器自動打開 |
+| 想更新到新版 | **不用做任何事** —— `啟動.bat` 每次啟動都會自動更新 |
+| 關閉系統 | 關掉黑色視窗 |
+
+**使用者不需要知道 Node、PostgreSQL、git、命令列的存在。**
+
+### 11.2 `安裝.bat`（跑一次）
+
+照 pmis 的五步，全部具備「已安裝就跳過」的判斷：
+
+1. `where node` 找不到 → `winget install -e --id OpenJS.NodeJS.LTS --silent --accept-package-agreements --accept-source-agreements`
+2. `where psql` 或登錄檔 `HKLM\SOFTWARE\PostgreSQL\Installations` 都找不到 → `winget install -e --id PostgreSQL.PostgreSQL.17 --silent ...`
+3. `where git` 找不到 → `winget install -e --id Git.Git --silent ...`（**git 是自動更新的前提**）
+4. `npm install`
+5. `node scripts\setup.js`（建 config → CREATE DATABASE → migrate → 種子資料）
+
+**必要細節**（都是 pmis 已踩過的）：
+
+- **裝完必須重讀 PATH**：winget 裝完，當前 cmd 視窗的 PATH 是舊的，`where node` 仍然找不到。要從登錄檔重讀 `HKLM\...\Session Manager\Environment` 與 `HKCU\Environment` 的 `Path` 併回 `PATH`（pmis 的 `:refreshpath` 子程序）。
+- **重讀後 node 仍找不到就停下來**，用白話告訴使用者「請關掉這個視窗，重新點一次安裝.bat」，`pause` 之後 `exit /b 1`。**不要硬往下跑**，否則後面每一步都會失敗，畫面噴一堆看不懂的錯。
+- **`setup.js` 失敗要給可執行的下一步**，不是丟 stack trace：「資料庫初始化失敗。若您電腦已有 PostgreSQL 且密碼不是 postgres，請開啟 `data\config.json` 修改 `DATABASE_URL` 的帳號密碼，再執行一次本檔。」
+
+### 11.3 `啟動.bat`（每次）
+
+```bat
+@echo off
+chcp 65001 >nul
+cd /d "%~dp0"
+rem 先更新再啟動，新版本這次就生效；沒有 git 或不是 git repo 時靜默跳過
+where git >nul 2>nul && git pull --ff-only
+node "scripts\start.js"
+if errorlevel 1 pause
+```
+
+`scripts/start.js` 的職責與順序：
+
+1. 讀 `data/config.json`；不存在或損毀 → 白話提示「請先雙擊安裝.bat」後 exit 1
+2. **先關掉佔用該埠的舊進程**（`free-port.js`）
+   > ⚠️ **這一步必須排在開瀏覽器之前。** 否則 `git pull` 拉到的新版沒生效、瀏覽器連上的是舊進程，而**畫面上完全看不出異狀** —— 這是 pmis 實際踩過的坑，註解要保留。
+   > 埠被「不是本系統」的程式佔用時，不要硬殺，改提示使用者換 `config.json` 的 `PORT`。
+3. 開預設瀏覽器到 `http://localhost:3940`（失敗不致命）
+4. `migrate()` → `app.listen()`，並印出「圖書系統已啟動：http://localhost:3940（關閉此視窗即停止）」
+
+### 11.4 `data/config.json`
+
+由 `setup.js` 首次產生，之後不覆寫（使用者的修改要保住）：
+
+```json
+{
+  "DATABASE_URL": "postgres://postgres:postgres@localhost:5432/library",
+  "PORT": 3940,
+  "GOOGLE_BOOKS_API_KEY": ""
+}
+```
+
+- 不進版控。`buildConfig(overrides)` 寫成**純函式**（無 I/O）以便測試。
+- 金鑰留空是合法狀態 —— 系統照常運作，只是跳過 Google Books 這個來源。
+
+### 11.5 自動更新的前提與限制
+
+- 更新機制是 `git pull --ff-only`，**因此使用者的電腦必須是用 `git clone` 取得這份程式**，不能是解壓縮 zip。
+- **首次部署由懂電腦的人做一次 `git clone`**（就是你），之後使用者完全不需要碰。
+- `--ff-only` 保證使用者端絕不產生合併衝突：本機沒有任何改動，永遠是快轉。若使用者端不知怎地有了本機改動導致 pull 失敗，**啟動流程不得中斷** —— `git pull` 失敗只印警告，照樣用現有版本啟動。舊版能用，遠比為了更新而開不起來好。
+- `npm install` **不在啟動時跑**（太慢）。若某次更新新增了套件相依，需請使用者重跑一次 `安裝.bat`。
+
+### 11.6 `.bat` 編碼（會變亂碼的坑）
+
+`cmd.exe` 用「當前 codepage」解讀 `.bat` 內的位元組，這台機器預設是 CP950。
+
+- **`啟動.bat`：純 ASCII**，第一行 `chcp 65001 >nul`。**所有中文訊息一律由 node 印**（node 輸出 UTF-8，配合 `chcp 65001` 正常顯示）。
+- **`安裝.bat`：存 CP950（Big5），不加 `chcp`。** 因為它在 node 裝好之前就要印中文，沒有 node 可用。
+- **兩者都不可存成 UTF-8 with BOM** —— BOM 會被 cmd 當成命令，第一行直接報錯。
+- 這兩支是 pmis 已在生產驗證的組合，照抄即可。**驗收方式只有一種：實際雙擊，用眼睛確認中文不是亂碼。** 自動化測試驗不到這件事。
+
+## 12. 非目標（本版不做）
 
 明確排除，避免範圍蔓延：
 
@@ -303,8 +395,9 @@ GET    /api/search/suggest?q=
 - 對外網開放、行動 App
 - 讀者自助借還
 
-## 12. 實作前提與待確認事項
+## 13. 實作前提與待確認事項
 
-1. **Google Books API key** —— 需使用者到 Google Cloud Console 申請（免費，每日 1000 次）。未取得前系統可運作，只是主力來源停用。
-2. **PostgreSQL 5416 的版本與連線帳密** —— 本機有 `postgresql-x64-10/16/17` 三個服務同時執行，需確認 5416 對應哪一個、以及可用的連線帳密。實作第一步驗證。
-3. **pg-mem 是否支援 partial unique index** —— 見 3.6。實作第一步驗證並回報。
+1. **Google Books API key** —— 需到 Google Cloud Console 申請（免費，每日 1000 次）。未取得前系統可運作，只是主力來源停用；填進 `data/config.json` 即生效。
+2. **開發機的 PostgreSQL 埠** —— 這台開發機已有 `postgresql-x64-10/16/17` 三個服務在跑，5432 可能已被佔用或密碼不是 `postgres`。**這只影響開發機**：`DATABASE_URL` 走 `data/config.json`，改掉即可，不影響使用者端由 `安裝.bat` 全新安裝的情境。
+3. **pg-mem 是否支援 partial unique index** —— 見 §3.6。實作第一步驗證並回報。
+4. **`.bat` 中文顯示** —— 見 §11.6。只能雙擊人工驗證，自動化測試驗不到。
