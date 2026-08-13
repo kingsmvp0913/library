@@ -165,7 +165,9 @@ CREATE UNIQUE INDEX loans_one_open_per_copy ON loans(copy_id) WHERE returned_at 
   UPDATE counters SET last_no = last_no + 1 WHERE kind = $1 RETURNING last_no;
   ```
   （不用 SEQUENCE，因為 pg-mem 對 SEQUENCE 支援度不明；單語句 UPDATE...RETURNING 兩邊都可行。）
-- 條碼以純 JS 產生 **Code128 SVG**（無外部依賴、無需上網），列印貼紙。支援單張列印與批次列印（剛建的 N 冊一次印）。
+- 條碼以純 JS 產生 **Code39 SVG**（無外部依賴、無需上網），列印貼紙。支援單張列印與批次列印（剛建的 N 冊一次印）。
+  > 選 Code39 而非 Code128：編碼表小得多（44 個字元 vs 107 個 pattern），自行實作出錯的機會低，且掃碼槍普遍支援。`B-000001` 的字元全在 Code39 字集內。代價是條碼較寬，對貼紙尺寸無影響。
+  > ⚠️ **條碼編碼表寫錯時，畫面上看起來完全正常，只有實際掃才知道。** 驗收必須用實體掃碼槍掃列印出來的紙本條碼。
 
 ## 5. ISBN 自動補資料與離線偵測
 
