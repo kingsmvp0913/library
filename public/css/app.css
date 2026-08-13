@@ -1,0 +1,66 @@
+:root {
+  --bg: #f7f7f8; --card: #ffffff; --text: #1a1a1a; --muted: #666;
+  --border: #ddd; --accent: #2563eb; --ok: #16a34a; --danger: #dc2626;
+  --shelf-bg: #fef3c7; --shelf-text: #92400e;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16181c; --card: #1f2227; --text: #e8e8ea; --muted: #9aa0a6;
+    --border: #33363c; --accent: #60a5fa; --ok: #4ade80; --danger: #f87171;
+    --shelf-bg: #422006; --shelf-text: #fcd34d;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: "Microsoft JhengHei", system-ui, sans-serif;
+       background: var(--bg); color: var(--text); }
+nav { display: flex; gap: 4px; padding: 8px 16px; background: var(--card);
+      border-bottom: 1px solid var(--border); align-items: center; flex-wrap: wrap; }
+nav a { padding: 8px 14px; border-radius: 8px; text-decoration: none; color: var(--text); }
+nav a.active, nav a:hover { background: var(--accent); color: #fff; }
+main { padding: 16px; max-width: 1100px; margin: 0 auto; }
+.card { background: var(--card); border: 1px solid var(--border);
+        border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+button { font: inherit; padding: 10px 18px; border-radius: 8px; cursor: pointer;
+         border: 1px solid var(--border); background: var(--card); color: var(--text); }
+button.primary { background: var(--accent); color: #fff; border-color: transparent; }
+button.danger { background: var(--danger); color: #fff; border-color: transparent; }
+input, select, textarea { font: inherit; padding: 10px; border-radius: 8px;
+         border: 1px solid var(--border); background: var(--card); color: var(--text); width: 100%; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--border); }
+.muted { color: var(--muted); }
+.row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+
+/* 掃碼輸入：老師站著操作，字要夠大 */
+.scan-box input { font-size: 24px; padding: 16px; }
+
+/* 還書時「請放回哪一格」是畫面上最重要的資訊 */
+.shelf-banner { background: var(--shelf-bg); color: var(--shelf-text);
+  font-size: 42px; font-weight: 700; padding: 28px; border-radius: 14px;
+  text-align: center; margin: 16px 0; }
+
+.badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 13px; }
+.badge-in { background: var(--ok); color: #fff; }
+.badge-out { background: var(--danger); color: #fff; }
+.net-badge { margin-left: auto; font-size: 13px; padding: 6px 12px;
+  border-radius: 999px; border: 1px solid var(--border); cursor: pointer; }
+.net-badge.offline { background: var(--danger); color: #fff; border-color: transparent; }
+
+#toast { position: fixed; right: 16px; bottom: 16px; display: flex;
+  flex-direction: column; gap: 8px; z-index: 50; }
+#toast div { padding: 12px 18px; border-radius: 8px; color: #fff; background: var(--ok); }
+#toast div.error { background: var(--danger); }
+
+/* 全站搜尋建議面板 */
+.omni { position: relative; flex: 1; min-width: 240px; }
+.omni-panel { position: absolute; top: 100%; left: 0; right: 0; z-index: 40;
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  max-height: 380px; overflow-y: auto; display: none; }
+.omni-panel.open { display: block; }
+.omni-group { padding: 6px 12px; font-size: 12px; color: var(--muted);
+  border-bottom: 1px solid var(--border); }
+.omni-item { padding: 10px 12px; cursor: pointer; }
+.omni-item.active, .omni-item:hover { background: var(--accent); color: #fff; }
+.omni-item small { display: block; opacity: .75; }
+
+@media print { nav, .no-print { display: none !important; } }
