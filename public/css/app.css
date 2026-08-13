@@ -63,4 +63,34 @@ th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--border)
 .omni-item.active, .omni-item:hover { background: var(--accent); color: #fff; }
 .omni-item small { display: block; opacity: .75; }
 
-@media print { nav, .no-print { display: none !important; } }
+/* 封面圖：四個位置各自的尺寸 */
+.cover-thumb { width: 44px; height: 60px; object-fit: cover; border-radius: 4px;
+  background: var(--bg); border: 1px solid var(--border); }
+.cover-detail { max-height: 320px; max-width: 100%; border-radius: 8px;
+  border: 1px solid var(--border); }
+.cover-scan { max-height: 220px; max-width: 100%; border-radius: 8px;
+  border: 1px solid var(--border); }
+.cover-preview { max-height: 300px; max-width: 100%; border-radius: 8px;
+  border: 1px solid var(--border); }
+.cover-none { display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 60px; border-radius: 4px; border: 1px dashed var(--border);
+  color: var(--muted); font-size: 11px; }
+
+/* 載入中：查 ISBN 時要看得出系統在動，否則使用者會一直重複點 */
+.spinner { display: inline-block; width: 18px; height: 18px; vertical-align: -3px;
+  border: 3px solid var(--border); border-top-color: var(--accent);
+  border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+button:disabled, input:disabled { opacity: .55; cursor: not-allowed; }
+
+/* 列印：只印條碼貼紙，其餘一律不印 */
+#printArea { display: none; }
+.print-label { display: inline-block; text-align: center; margin: 6mm 4mm;
+  page-break-inside: avoid; }
+.print-label div { font-size: 12pt; font-family: monospace; margin-top: 2mm; }
+@media print {
+  body > *:not(#printArea) { display: none !important; }
+  #printArea { display: block !important; }
+  .no-print { display: none !important; }
+  @page { margin: 8mm; }
+}

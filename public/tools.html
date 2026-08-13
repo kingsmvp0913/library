@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>匯入匯出 · 圖書管理系統</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <nav>
+    <a href="/index.html">借還台</a>
+    <a href="/catalog.html">館藏</a>
+    <a href="/shelves.html">書櫃</a>
+    <a href="/borrowers.html">借閱人</a>
+    <a href="/loans.html">借閱紀錄</a>
+    <a href="/tools.html">匯入匯出</a>
+    <span class="omni">
+      <input id="omni" placeholder="搜尋書名、作者、編號、借閱人、書櫃…" autocomplete="off">
+      <div class="omni-panel" id="omniPanel"></div>
+    </span>
+    <span class="net-badge">偵測中…</span>
+  </nav>
+  <main>
+    <div class="card">
+      <h3>匯出（給人看、拿去對帳）</h3>
+      <p class="muted">下載後可以直接用 Excel 打開，中文不會變亂碼。</p>
+      <div class="row">
+        <a href="/api/export/titles.csv"><button>館藏清單</button></a>
+        <a href="/api/export/borrowers.csv"><button>借閱人名單</button></a>
+        <a href="/api/export/loans.csv"><button>借閱紀錄</button></a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>批量建檔（把 Excel 裡現成的書一次匯進來）</h3>
+      <p class="muted">
+        先下載範本，照著格式填好再上傳。<strong>類型與櫃位要填系統裡已經有的名稱</strong>，
+        沒有的請先去「書櫃」頁建立。有問題的那幾列會單獨列出來，其餘照樣會建立。
+      </p>
+      <div class="row">
+        <a href="/api/import/template.csv"><button>下載範本</button></a>
+        <input type="file" id="csvFile" accept=".csv,text/csv" style="max-width:300px">
+        <button class="primary" id="doImport">開始匯入</button>
+      </div>
+      <div id="importResult"></div>
+    </div>
+
+    <div class="card">
+      <h3>完整備份</h3>
+      <p class="muted">
+        含借還紀錄與編號流水號，是唯一能完整還原的格式。建議定期下載一份存到隨身碟。
+      </p>
+      <a href="/api/export/backup.json"><button>下載完整備份</button></a>
+    </div>
+
+    <div class="card">
+      <h3>還原備份</h3>
+      <p class="muted">
+        <strong>還原會清掉目前所有資料，換成備份檔裡的內容。</strong>
+        系統會在動手前先自動下載一份目前的現況，萬一還原錯了還救得回來。
+      </p>
+      <div class="row">
+        <input type="file" id="backupFile" accept=".json,application/json" style="max-width:300px">
+      </div>
+      <p><label><input type="checkbox" id="confirmRestore" style="width:auto">
+        我了解目前的資料會被覆蓋</label></p>
+      <button class="danger" id="doRestore">還原</button>
+      <div id="restoreResult"></div>
+    </div>
+  </main>
+  <script src="/js/app.js"></script>
+  <script src="/js/omnisearch.js"></script>
+  <script src="/js/page-tools.js"></script>
+</body>
+</html>

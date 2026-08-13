@@ -148,6 +148,69 @@ async function api(method, url, body) {
   const noRename = await api('PUT', `/api/copies/${copyId}`, { barcode: 'B-999999' });
   check('不可修改編號（400）', noRename.status === 400, `實際 ${noRename.status}`);
 
+  console.log('\n[11] 匯出');
+  const csvRes = await fetch(BASE + '/api/export/titles.csv');
+  // 必須看原始 bytes：fetch 的 .text() 依規範會自動剝掉 UTF-8 BOM，用它永遠驗不到。
+  const csvBytes = new Uint8Array(await csvRes.clone().arrayBuffer());
+  const csvText = await csvRes.text();
+  check('館藏 CSV 有 UTF-8 BOM（Excel 開中文才不會亂碼）',
+    csvBytes[0] === 0xEF && csvBytes[1] === 0xBB && csvBytes[2] === 0xBF,
+    `前三 byte = ${[...csvBytes.slice(0, 3)].map((b) => b.toString(16)).join(' ')}`);
+  check('館藏 CSV 含剛建的書', csvText.includes(`毛毛蟲${tag}`));
+  check('館藏 CSV 帶下載檔名',
+    (csvRes.headers.get('content-disposition') ?? '').includes('.csv'));
+  const borrowersCsv = await (await fetch(BASE + '/api/export/borrowers.csv')).text();
+  check('借閱人 CSV 含剛建的人', borrowersCsv.includes(`小明${tag}`));
+  const loansCsv = await (await fetch(BASE + '/api/export/loans.csv')).text();
+  check('借閱紀錄 CSV 有資料', loansCsv.split('\n').length > 2);
+
+  const backup = await api('GET', '/api/export/backup.json');
+  check('完整備份含七張表', Object.keys(backup.body.tables).length === 7);
+  check('備份含 counters（沒有它還原後會撞號）',
+    Array.isArray(backup.body.tables.counters) && backup.body.tables.counters.length === 2);
+
+  console.log('\n[12] 批量匯入');
+  const cats2 = await api('GET', '/api/categories');
+  const bookCatName = cats2.body.find((c) => c.kind === 'book').name;
+  const importCsv = `書名,作者,出版社,ISBN,類型,櫃位,冊數,備註
+匯入測試書${tag},作者,出版社,97811111${tag},${bookCatName},A櫃${tag},2,
+,沒書名的壞列,,,${bookCatName},,1,
+壞類型${tag},,,,不存在的類型,,1,`;
+  const imp = await api('POST', '/api/import/titles', { csv: importCsv });
+  check('成功建立 1 筆', imp.body.created === 1, `created=${imp.body.created}`);
+  check('兩列錯誤被逐列回報', imp.body.errors.length === 2,
+    JSON.stringify(imp.body.errors).slice(0, 120));
+  // 這份 CSV 的第 2 列是正常的，第一個壞列在第 3 列（標頭算第 1 列）
+  check('錯誤帶得出列號', imp.body.errors[0]?.row === 3, `row=${imp.body.errors[0]?.row}`);
+
+  const impList = await api('GET', `/api/titles?q=匯入測試書${tag}`);
+  check('匯入的書有 2 冊且發了編號', impList.body[0]?.total_copies === 2);
+  check('匯入時指定的櫃位有生效', impList.body.length === 1);
+
+  console.log('\n[13] 沒設定金鑰時的提示');
+  const noKey = await api('GET', '/api/lookup/isbn/9786264063463');
+  if (backup.body.tables.titles.length >= 0) {
+    check('查不到時回報原因（no-api-key 或單純查無）',
+      noKey.body.found === false && 'hint' in noKey.body,
+      JSON.stringify(noKey.body));
+  }
+
+  // 還原會清掉整個資料庫，預設不跑——這台機器上可能有使用者手動輸入的資料。
+  // 要驗證還原路徑請加參數：node scripts/e2e-smoke.js --include-restore
+  if (process.argv.includes('--include-restore')) {
+    console.log('\n[14] 還原（原地還原剛才那份備份）');
+    const before = (await api('GET', '/api/titles')).body.length;
+    const r = await api('POST', '/api/import/restore',
+      { backup: backup.body, confirm: true });
+    check('還原成功', r.status === 200, JSON.stringify(r.body).slice(0, 120));
+    check('還原有回傳還原前的備份（唯一的退路）', !!r.body.previousBackup?.tables);
+    const after = (await api('GET', '/api/titles')).body.length;
+    check('還原後書目數回到備份當時', after === backup.body.tables.titles.length,
+      `還原前畫面 ${before} 筆、備份 ${backup.body.tables.titles.length} 筆、還原後 ${after} 筆`);
+  } else {
+    console.log('\n[14] 還原 —— 已跳過（會清空資料庫）。要驗請加 --include-restore');
+  }
+
   console.log(`\n=== 結果：${pass} 通過、${fail} 失敗 ===`);
   process.exit(fail === 0 ? 0 : 1);
 })().catch((err) => {

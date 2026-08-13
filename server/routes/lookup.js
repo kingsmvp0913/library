@@ -36,8 +36,16 @@ router.get('/lookup/isbn/:isbn', async (req, res, next) => {
     }
 
     // 3) 外部來源
-    const info = await lookupIsbn(isbn, { apiKey: process.env.GOOGLE_BOOKS_API_KEY ?? '' });
-    if (!info) return res.json({ found: false, online: true, info: null });
+    const apiKey = process.env.GOOGLE_BOOKS_API_KEY ?? '';
+    const info = await lookupIsbn(isbn, { apiKey });
+    if (!info) {
+      // 沒金鑰時 Google provider 根本不發請求，NCL 也還沒接通，等於一本都查不到。
+      // 這跟「查了但真的沒這本」是兩回事，前端要顯示的說明完全不同。
+      return res.json({
+        found: false, online: true, info: null,
+        hint: apiKey ? null : 'no-api-key',
+      });
+    }
     res.json({ found: true, online: true, source: info.source, info });
   } catch (err) { next(err); }
 });

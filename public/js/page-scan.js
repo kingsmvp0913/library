@@ -1,6 +1,11 @@
 const resultEl = document.getElementById('result');
 const scanEl = document.getElementById('scan');
 
+/** 掃到書時顯示封面，讓老師一眼確認拿對書了。 */
+function coverImg(path) {
+  return path ? `<p><img class="cover-scan" src="${esc(path)}" alt=""></p>` : '';
+}
+
 async function loadOpenLoans() {
   const rows = await Api.get('/api/loans?open=1');
   document.getElementById('openLoans').innerHTML = rows.length
@@ -18,6 +23,7 @@ async function renderBorrow(data) {
   resultEl.innerHTML = `
     <div class="card">
       <h2>${esc(data.title.title)} <span class="badge badge-in">在架</span></h2>
+      ${coverImg(data.title.cover_path)}
       <p class="muted">${esc(data.copy.barcode)}　${esc(data.title.authors ?? '')}</p>
       <div class="row">
         <select id="borrower" style="max-width:320px">
@@ -46,8 +52,9 @@ function renderReturn(data) {
   resultEl.innerHTML = `
     <div class="card">
       <h2>${esc(data.title.title)} <span class="badge badge-out">借出中</span></h2>
-      <p class="muted">${esc(data.copy.barcode)}　借閱人：${esc(data.borrower?.name ?? '未知')}</p>
       <div class="shelf-banner">請放回：${esc(data.shelfLabel)}</div>
+      ${coverImg(data.title.cover_path)}
+      <p class="muted">${esc(data.copy.barcode)}　借閱人：${esc(data.borrower?.name ?? '未知')}</p>
       <button class="primary" id="doReturn">確認歸還</button>
     </div>`;
   document.getElementById('doReturn').addEventListener('click', async () => {
