@@ -8,6 +8,18 @@ function createApp() {
   app.use(express.json());
   app.use(express.static(path.join(ROOT, 'public')));
   app.use('/covers', express.static(path.join(ROOT, 'data', 'covers')));
+
+  const masters = require('./routes/masters.js');
+  app.use('/api/categories', masters.categories);
+  app.use('/api/shelves', masters.shelves);
+  app.use('/api/borrowers', masters.borrowers);
+
+  // 統一錯誤處理：不把 stack trace 丟給前端
+  app.use((err, req, res, _next) => {
+    console.error('[API]', err.message);
+    res.status(500).json({ error: '系統錯誤：' + err.message });
+  });
+
   return app;
 }
 
