@@ -16,6 +16,7 @@ function createApp() {
   app.use('/api', require('./routes/lookup.js'));
   app.use('/api/titles', require('./routes/titles.js'));
   app.use('/api/copies', require('./routes/copies.js'));
+  app.use('/api', require('./routes/scan.js'));
 
   // 統一錯誤處理：不把 stack trace 丟給前端
   app.use((err, req, res, _next) => {
