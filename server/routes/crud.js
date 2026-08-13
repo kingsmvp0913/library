@@ -7,20 +7,26 @@ const db = require('../db.js');
  *          orderBy?:string, beforeWrite?:(body:object, id:number|null)=>Promise<string|null>}} opts
  */
 function makeCrudRouter(opts) {
-  const { table, fields, required, searchFields, orderBy = 'id', beforeWrite } = opts;
+  const {
+    table, fields, required, searchFields, orderBy = 'id',
+    beforeWrite, guardDelete, hideInactive = false,
+  } = opts;
   const router = express.Router();
 
   router.get('/', async (req, res, next) => {
     try {
       const q = (req.query.q ?? '').trim();
-      if (!q) {
-        const { rows } = await db.query(`SELECT * FROM ${table} ORDER BY ${orderBy}`);
-        return res.json(rows);
+      const conds = [];
+      const params = [];
+      // 停用的資料預設不出現在清單與下拉，但要能用參數叫出來管理。
+      if (hideInactive && req.query.includeInactive !== '1') conds.push('active = TRUE');
+      if (q) {
+        params.push(`%${q}%`);
+        conds.push('(' + searchFields.map((f) => `${f} ILIKE $${params.length}`).join(' OR ') + ')');
       }
-      const where = searchFields.map((f, i) => `${f} ILIKE $${i + 1}`).join(' OR ');
-      const params = searchFields.map(() => `%${q}%`);
+      const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
       const { rows } = await db.query(
-        `SELECT * FROM ${table} WHERE ${where} ORDER BY ${orderBy}`, params
+        `SELECT * FROM ${table} ${where} ORDER BY ${orderBy}`, params
       );
       res.json(rows);
     } catch (err) { next(err); }
@@ -68,9 +74,22 @@ function makeCrudRouter(opts) {
 
   router.delete('/:id', async (req, res, next) => {
     try {
-      await db.query(`DELETE FROM ${table} WHERE id = $1`, [Number(req.params.id)]);
+      const id = Number(req.params.id);
+      // 先自己查關聯再刪，才講得出「這個書櫃還有 3 本書」這種有用的話。
+      // 直接讓資料庫的 FK 去擋，使用者只會看到一句看不懂的英文。
+      if (guardDelete) {
+        const reason = await guardDelete(id);
+        if (reason) return res.status(409).json({ error: reason });
+      }
+      await db.query(`DELETE FROM ${table} WHERE id = $1`, [id]);
       res.json({ ok: true });
-    } catch (err) { next(err); }
+    } catch (err) {
+      // 最後防線：關聯檢查有漏網的情況也不能吐資料庫術語給使用者。
+      if (err.code === '23503' || /foreign key/i.test(err.message ?? '')) {
+        return res.status(409).json({ error: '這筆資料還有其他地方正在使用，無法刪除。' });
+      }
+      next(err);
+    }
   });
 
   return router;

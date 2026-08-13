@@ -7,14 +7,18 @@ async function loadRefs() {
   ]);
 }
 
-function shelfLabel(s) {
-  const p = shelves.find((x) => x.id === s.parent_id);
-  return p ? `${p.name} · ${s.name}` : s.name;
-}
-
 function shelfOptions() {
   return '<option value="">未指定櫃位</option>'
-    + shelves.map((s) => `<option value="${s.id}">${esc(shelfLabel(s))}</option>`).join('');
+    + shelves.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+}
+
+const STATUS_LABEL = { in: '在架', out: '借出中', lost: '遺失', repair: '修繕中' };
+
+function statusOptions(current) {
+  // 借出中是借還流程算出來的狀態，不讓人在這裡手動指定，
+  // 否則會出現「狀態說借出中、卻沒有任何借閱紀錄」的鬼資料。
+  return ['in', 'lost', 'repair'].map((s) =>
+    `<option value="${s}"${s === current ? ' selected' : ''}>${STATUS_LABEL[s]}</option>`).join('');
 }
 
 function coverCell(path) {
@@ -71,13 +75,31 @@ async function showDetail(id) {
       ? esc(t.description ?? '')
       : `${esc(t.authors ?? '')}　${esc(t.publisher ?? '')}　${esc(t.isbn13 ?? '')}`}</p>
     <div class="row no-print">
+      <button id="editTitle">編輯資料</button>
       <button id="addCopy">加冊</button>
       <button id="printAll">列印全部條碼</button>
       <label class="muted">${t.cover_path ? '換一張圖片' : '上傳圖片'}：
         <input type="file" id="coverFile" accept="image/*" style="max-width:230px"></label>
+      <button class="danger" id="delTitle" style="margin-left:auto">刪除整筆</button>
     </div>
     <div id="copies"></div>
   </div>`;
+
+  document.getElementById('editTitle').addEventListener('click', () => renderEditForm(t));
+
+  document.getElementById('delTitle').addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    try {
+      await Api.del(`/api/titles/${id}`);
+      showToast('已刪除');
+      document.getElementById('form').innerHTML = '';
+      loadList();
+    } catch (err) {
+      // 後端會說「還有 3 冊，請先逐冊刪除」
+      showToast(err.message, 'error');
+      e.target.disabled = false;
+    }
+  });
 
   const box = document.getElementById('copies');
   for (const c of t.copies) {
@@ -86,27 +108,65 @@ async function showDetail(id) {
     wrap.appendChild(renderCode39(c.barcode));
     const label = document.createElement('div');
     label.textContent = c.barcode;
-    const status = document.createElement('div');
-    status.className = 'muted';
-    status.textContent = c.status === 'in' ? '在架' : c.status === 'out' ? '借出中'
-      : c.status === 'lost' ? '遺失' : '修繕中';
-    const pick = document.createElement('select');
-    pick.className = 'no-print';
-    pick.style.marginTop = '6px';
-    pick.innerHTML = shelfOptions();
-    pick.value = c.shelf_id ?? '';
-    pick.addEventListener('change', async () => {
-      try {
-        await Api.put(`/api/copies/${c.id}`, { shelf_id: Number(pick.value) || null });
-        showToast('已更新櫃位');
-      } catch (err) { showToast(err.message, 'error'); }
-    });
+
+    const isOut = c.status === 'out';
+    const ctrl = document.createElement('div');
+    ctrl.className = 'no-print';
+    ctrl.style.marginTop = '6px';
+
+    if (isOut) {
+      // 借出中的冊不能改櫃位或狀態——那些欄位要等它回來才有意義。
+      const outMark = document.createElement('div');
+      outMark.innerHTML = '<span class="badge badge-out">借出中</span>';
+      ctrl.appendChild(outMark);
+    } else {
+      const shelfPick = document.createElement('select');
+      shelfPick.innerHTML = shelfOptions();
+      shelfPick.value = c.shelf_id ?? '';
+      shelfPick.title = '放在哪個書櫃';
+      shelfPick.addEventListener('change', async () => {
+        try {
+          await Api.put(`/api/copies/${c.id}`, { shelf_id: Number(shelfPick.value) || null });
+          showToast('已更新櫃位');
+        } catch (err) { showToast(err.message, 'error'); }
+      });
+
+      const statusPick = document.createElement('select');
+      statusPick.innerHTML = statusOptions(c.status);
+      statusPick.style.marginTop = '4px';
+      statusPick.title = '這一冊的狀況';
+      statusPick.addEventListener('change', async () => {
+        try {
+          await Api.put(`/api/copies/${c.id}`, { status: statusPick.value });
+          showToast('已更新狀態');
+          loadList();
+        } catch (err) { showToast(err.message, 'error'); }
+      });
+      ctrl.append(shelfPick, statusPick);
+    }
+
+    const btns = document.createElement('div');
+    btns.className = 'no-print';
+    btns.style.marginTop = '4px';
     const printOne = document.createElement('button');
-    printOne.className = 'no-print';
-    printOne.textContent = '列印這張';
-    printOne.style.marginTop = '6px';
+    printOne.textContent = '列印';
     printOne.addEventListener('click', () => printBarcodes([c]));
-    wrap.append(label, status, pick, printOne);
+    const delOne = document.createElement('button');
+    delOne.className = 'danger';
+    delOne.textContent = '刪除';
+    delOne.addEventListener('click', async () => {
+      try {
+        await Api.del(`/api/copies/${c.id}`);
+        showToast('已刪除這一冊');
+        await loadList();
+        showDetail(id);
+      } catch (err) {
+        // 後端會說「有借閱紀錄，請改標記遺失」這種能照著做的話
+        showToast(err.message, 'error');
+      }
+    });
+    btns.append(printOne, delOne);
+    wrap.append(label, ctrl, btns);
     box.appendChild(wrap);
   }
 
@@ -140,6 +200,59 @@ async function showDetail(id) {
       loadList();
     } catch (err) { showToast(err.message, 'error'); }
     finally { e.target.disabled = false; }
+  });
+}
+
+/** 建檔之後才發現打錯字、或想補上作者與 ISBN——這些都得能改。 */
+function renderEditForm(t) {
+  const isToy = t.kind === 'toy';
+  const cats = categories.filter((c) => c.kind === t.kind);
+  document.getElementById('form').innerHTML = `<div class="card">
+    <h3>編輯${isToy ? '教具' : '書目'}資料</h3>
+    <p><input id="e-title" placeholder="${isToy ? '教具名稱' : '書名'}"
+              value="${esc(t.title ?? '')}"></p>
+    ${isToy
+      ? `<p><input id="e-note" placeholder="存放備註"
+                   value="${esc(t.description ?? '')}"></p>`
+      : `<p><input id="e-authors" placeholder="作者" value="${esc(t.authors ?? '')}"></p>
+         <p><input id="e-publisher" placeholder="出版社" value="${esc(t.publisher ?? '')}"></p>
+         <p><input id="e-isbn" placeholder="ISBN（可留空）" value="${esc(t.isbn13 ?? '')}"></p>`}
+    <div class="row">
+      <select id="e-category" style="max-width:200px">
+        ${cats.map((c) => `<option value="${c.id}"${c.id === t.category_id ? ' selected' : ''}>
+           ${esc(c.name)}</option>`).join('')}
+      </select>
+      <button class="primary" id="e-save">儲存</button>
+      <button id="e-cancel">取消</button>
+    </div>
+  </div>`;
+
+  document.getElementById('e-cancel').addEventListener('click', () => showDetail(t.id));
+
+  document.getElementById('e-save').addEventListener('click', async (e) => {
+    const body = {
+      title: document.getElementById('e-title').value.trim(),
+      category_id: Number(document.getElementById('e-category').value),
+    };
+    if (isToy) {
+      body.description = document.getElementById('e-note').value.trim();
+    } else {
+      body.authors = document.getElementById('e-authors').value.trim();
+      body.publisher = document.getElementById('e-publisher').value.trim();
+      body.isbn13 = document.getElementById('e-isbn').value.trim();
+    }
+    if (!body.title) return showToast(isToy ? '請填寫教具名稱' : '請填寫書名', 'error');
+
+    e.target.disabled = true;
+    try {
+      await Api.put(`/api/titles/${t.id}`, body);
+      showToast('已儲存');
+      await loadList();
+      showDetail(t.id);
+    } catch (err) {
+      showToast(err.message, 'error');
+      e.target.disabled = false;
+    }
   });
 }
 

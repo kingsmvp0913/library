@@ -25,4 +25,31 @@ router.put('/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const { rows } = await db.query('SELECT status FROM copies WHERE id = $1', [id]);
+    if (!rows.length) return res.status(404).json({ error: '找不到這一冊' });
+    if (rows[0].status === 'out') {
+      return res.status(409).json({ error: '這一冊正在借出中，請先完成歸還再刪除。' });
+    }
+    // 刻意寫成 IN (SELECT ...) 而不是 `WHERE copy_id = $1`：
+    // loans 上有 partial unique index（WHERE returned_at IS NULL），
+    // 已歸還的列離開索引後，用索引欄位做等值查詢在 pg-mem 會查不到它，
+    // 這條防護就會靜默失效（歸還過的冊變成可以刪）。兩種寫法在真 PG 等價。
+    const used = await db.query(
+      'SELECT COUNT(*) AS c FROM loans WHERE copy_id IN (SELECT id FROM copies WHERE id = $1)',
+      [id]);
+    // 刪掉有紀錄的冊，借閱歷史就會出現對不到書的資料。
+    // 書弄丟了應該標記成「遺失」保留紀錄，而不是刪除。
+    if (Number(used.rows[0].c)) {
+      return res.status(409).json({
+        error: '這一冊有借閱紀錄，刪除會讓紀錄對不到書。若書不見了，請把狀態改成「遺失」。',
+      });
+    }
+    await db.query('DELETE FROM copies WHERE id = $1', [id]);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

@@ -54,27 +54,34 @@ describe('主檔 CRUD', () => {
     expect(new Set(res.body.map((c) => c.kind))).toEqual(new Set(['book', 'toy']));
   });
 
-  test('書櫃可以建立第二層', async () => {
+  // 使用者只想填「A櫃」這個名字，不該還要自己編一組代碼。
+  test('書櫃只填名稱就能建立，代碼自動產生', async () => {
     const { app } = await freshApp();
-    const { body: top } = await request(app).post('/api/shelves').send({ code: 'A', name: 'A櫃' });
-    await request(app)
-      .post('/api/shelves')
-      .send({ code: 'A-2', name: '第2層', parent_id: top.id })
-      .expect(200);
-    const list = await request(app).get('/api/shelves');
-    expect(list.body.find((s) => s.code === 'A-2').parent_id).toBe(top.id);
+    const res = await request(app).post('/api/shelves').send({ name: 'A櫃' }).expect(200);
+    expect(res.body.name).toBe('A櫃');
+    expect(res.body.code).toMatch(/^S\d{3}$/);
   });
 
-  // 只允許兩層。掛在第二層底下會讓「櫃 · 層」的顯示邏輯無從組起。
-  test('書櫃不可建立第三層', async () => {
+  test('自動產生的代碼不會重複', async () => {
     const { app } = await freshApp();
-    const { body: top } = await request(app).post('/api/shelves').send({ code: 'A', name: 'A櫃' });
-    const { body: mid } = await request(app)
-      .post('/api/shelves')
-      .send({ code: 'A-2', name: '第2層', parent_id: top.id });
-    await request(app)
-      .post('/api/shelves')
-      .send({ code: 'A-2-1', name: '第3層', parent_id: mid.id })
-      .expect(400);
+    const made = [];
+    for (const name of ['A櫃', 'B櫃', 'C櫃']) {
+      made.push((await request(app).post('/api/shelves').send({ name }).expect(200)).body.code);
+    }
+    expect(new Set(made).size).toBe(3);
+  });
+
+  test('書櫃缺名稱要回 400', async () => {
+    const { app } = await freshApp();
+    await request(app).post('/api/shelves').send({}).expect(400);
+  });
+
+  test('書櫃可以改名，代碼不受影響', async () => {
+    const { app } = await freshApp();
+    const { body } = await request(app).post('/api/shelves').send({ name: 'A櫃' });
+    const res = await request(app).put(`/api/shelves/${body.id}`)
+      .send({ name: '繪本櫃' }).expect(200);
+    expect(res.body.name).toBe('繪本櫃');
+    expect(res.body.code).toBe(body.code);
   });
 });

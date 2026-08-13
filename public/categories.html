@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>借閱人 · 圖書管理系統</title>
+  <title>類型 · 圖書管理系統</title>
   <link rel="stylesheet" href="/css/app.css">
 </head>
-<body data-resource="borrowers">
+<body data-resource="categories">
   <nav>
     <a href="/index.html">借還台</a>
     <a href="/catalog.html">館藏</a>
@@ -23,9 +23,13 @@
     <span class="net-badge">偵測中…</span>
   </nav>
   <main>
+    <p class="muted">
+      類型決定新增時出現在哪一組，也決定編號前綴：<strong>圖書是 B-、教具是 T-</strong>。
+      建立之後「屬於」就不要再改了，已經發出去的編號不會跟著變。
+    </p>
     <div id="form"></div>
     <div class="card"><table>
-      <thead><tr><th>姓名</th><th>班級</th><th>借閱證號</th><th></th></tr></thead>
+      <thead><tr><th>類型名稱</th><th>屬於</th><th></th></tr></thead>
       <tbody id="list"></tbody>
     </table></div>
   </main>

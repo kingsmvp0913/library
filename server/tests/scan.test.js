@@ -12,19 +12,17 @@ async function setup() {
   const app = createApp();
 
   const { rows: [cat] } = await db.query(`SELECT id FROM categories WHERE kind='book' LIMIT 1`);
-  const { rows: [top] } = await db.query(
-    `INSERT INTO shelves (code,name) VALUES ('A','A櫃') RETURNING id`);
-  const { rows: [lv] } = await db.query(
-    `INSERT INTO shelves (code,name,parent_id) VALUES ('A-2','第2層',$1) RETURNING id`, [top.id]);
+  const { rows: [shelf] } = await db.query(
+    `INSERT INTO shelves (code,name) VALUES ('S001','A櫃') RETURNING id`);
   const { body } = await request(app).post('/api/titles')
-    .send({ title: '好餓的毛毛蟲', category_id: cat.id, copies: 1, shelf_id: lv.id });
+    .send({ title: '好餓的毛毛蟲', category_id: cat.id, copies: 1, shelf_id: shelf.id });
   const { rows: [borrower] } = await db.query(
     `INSERT INTO borrowers (name, class_name) VALUES ('小明','小班') RETURNING id`);
 
   return {
     app, db, catId: cat.id,
     barcode: body.copies[0].barcode, copyId: body.copies[0].id,
-    borrowerId: borrower.id, topId: top.id, lvId: lv.id,
+    borrowerId: borrower.id, shelfId: shelf.id,
   };
 }
 
@@ -42,7 +40,7 @@ describe('POST /api/scan', () => {
     await request(app).post('/api/loans').send({ barcode, borrower_id: borrowerId });
     const res = await request(app).post('/api/scan').send({ barcode }).expect(200);
     expect(res.body.action).toBe('return');
-    expect(res.body.shelfLabel).toBe('A櫃 · 第2層');
+    expect(res.body.shelfLabel).toBe('A櫃');
     expect(res.body.borrower.name).toBe('小明');
   });
 
@@ -81,7 +79,7 @@ describe('POST /api/returns', () => {
     const { app, db, barcode, borrowerId } = await setup();
     await request(app).post('/api/loans').send({ barcode, borrower_id: borrowerId });
     const res = await request(app).post('/api/returns').send({ barcode }).expect(200);
-    expect(res.body.shelfLabel).toBe('A櫃 · 第2層');
+    expect(res.body.shelfLabel).toBe('A櫃');
     const { rows } = await db.query('SELECT status FROM copies WHERE barcode = $1', [barcode]);
     expect(rows[0].status).toBe('in');
   });
@@ -100,17 +98,6 @@ describe('POST /api/returns', () => {
     await request(app).post('/api/loans').send({ barcode: bc, borrower_id: borrowerId });
     const res = await request(app).post('/api/returns').send({ barcode: bc }).expect(200);
     expect(res.body.shelfLabel).toBe('尚未指定櫃位');
-  });
-
-  // 只有一層的櫃子不該顯示成「A櫃 · A櫃」或多出一個分隔點
-  test('只有一層的書櫃只顯示櫃名', async () => {
-    const { app, db, catId, borrowerId, topId } = await setup();
-    const { body } = await request(app).post('/api/titles')
-      .send({ title: '單層櫃的書', category_id: catId, copies: 1, shelf_id: topId });
-    const bc = body.copies[0].barcode;
-    await request(app).post('/api/loans').send({ barcode: bc, borrower_id: borrowerId });
-    const res = await request(app).post('/api/returns').send({ barcode: bc }).expect(200);
-    expect(res.body.shelfLabel).toBe('A櫃');
   });
 });
 

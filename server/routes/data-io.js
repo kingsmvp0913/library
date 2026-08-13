@@ -19,16 +19,11 @@ function fmtTime(v) {
   return v ? new Date(v).toLocaleString('zh-TW') : '';
 }
 
-/** 組出「A櫃 · 第2層」用的對照表。 */
+/** 書櫃 id → 名稱的對照表（書櫃只有一層）。 */
 async function shelfNameMap() {
-  const { rows } = await db.query('SELECT id, name, parent_id FROM shelves');
+  const { rows } = await db.query('SELECT id, name FROM shelves');
   const byId = new Map(rows.map((r) => [r.id, r]));
-  const label = (id) => {
-    const s = byId.get(id);
-    if (!s) return '';
-    const p = s.parent_id ? byId.get(s.parent_id) : null;
-    return p ? `${p.name} · ${s.name}` : s.name;
-  };
+  const label = (id) => byId.get(id)?.name ?? '';
   return { byId, label };
 }
 

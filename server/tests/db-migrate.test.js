@@ -47,10 +47,17 @@ describe('migrate', () => {
     expect(rows.map((r) => r.kind).sort()).toEqual(['book', 'toy']);
   });
 
-  test('counters 兩種前綴都已備妥且從 0 起算', async () => {
+  // book／toy 是館藏編號，shelf／category 是主檔代碼——
+  // 都由系統自動發號，使用者不必自己編。
+  test('四種流水號都已備妥且從 0 起算', async () => {
     const db = freshDb();
     await db.migrate();
     const { rows } = await db.query('SELECT kind, last_no FROM counters ORDER BY kind');
-    expect(rows).toEqual([{ kind: 'book', last_no: 0 }, { kind: 'toy', last_no: 0 }]);
+    expect(rows).toEqual([
+      { kind: 'book', last_no: 0 },
+      { kind: 'category', last_no: 0 },
+      { kind: 'shelf', last_no: 0 },
+      { kind: 'toy', last_no: 0 },
+    ]);
   });
 });

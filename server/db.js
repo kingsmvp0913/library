@@ -16,6 +16,8 @@ const DDL = [
      id SERIAL PRIMARY KEY,
      code TEXT NOT NULL UNIQUE,
      name TEXT NOT NULL,
+     -- parent_id 是早期「櫃 → 層」兩層結構的殘留，實際使用後判定太複雜已移除。
+     -- 程式不再讀寫它；欄位保留是因為本專案沒有 drop column 機制。
      parent_id INTEGER REFERENCES shelves(id),
      note TEXT,
      sort_order INTEGER NOT NULL DEFAULT 0,
@@ -108,7 +110,9 @@ async function migrate() {
       [code, name, kind, sort]
     );
   }
-  for (const kind of ['book', 'toy']) {
+  // book／toy 是館藏編號；shelf／category 是主檔代碼——
+  // 代碼都由系統自動產生，使用者只填看得懂的名字。
+  for (const kind of ['book', 'toy', 'shelf', 'category']) {
     await query(`INSERT INTO counters (kind) VALUES ($1) ON CONFLICT (kind) DO NOTHING`, [kind]);
   }
 }

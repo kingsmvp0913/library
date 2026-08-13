@@ -38,15 +38,13 @@ async function api(method, url, body) {
   const tag = String(Date.now()).slice(-6);
   console.log(`=== 端到端煙霧測試（tag=${tag}）===`);
 
-  console.log('\n[1] 建立書櫃兩層');
-  const top = await api('POST', '/api/shelves', { code: `A${tag}`, name: `A櫃${tag}` });
-  check('建立頂層櫃', top.status === 200 && top.body.id > 0, JSON.stringify(top.body));
-  const lv = await api('POST', '/api/shelves',
-    { code: `A${tag}-2`, name: '第2層', parent_id: top.body.id });
-  check('建立第二層', lv.status === 200);
-  const bad = await api('POST', '/api/shelves',
-    { code: `A${tag}-3`, name: '第3層', parent_id: lv.body.id });
-  check('第三層被擋下（回 400）', bad.status === 400, `實際 ${bad.status}`);
+  console.log('\n[1] 建立書櫃');
+  const top = await api('POST', '/api/shelves', { name: `A櫃${tag}` });
+  check('只填名稱就能建立書櫃', top.status === 200 && top.body.id > 0, JSON.stringify(top.body));
+  check('代碼自動產生，使用者不必自己編',
+    /^S[0-9]{3}$/.test(top.body.code ?? ''), `code=${top.body.code}`);
+  const noName = await api('POST', '/api/shelves', {});
+  check('缺名稱回 400', noName.status === 400, `實際 ${noName.status}`);
 
   console.log('\n[2] 建立借閱人');
   const borrower = await api('POST', '/api/borrowers', { name: `小明${tag}`, class_name: '小班' });
@@ -60,7 +58,7 @@ async function api(method, url, body) {
 
   const book = await api('POST', '/api/titles', {
     isbn13: `978000000${tag}`, title: `好餓的毛毛蟲${tag}`, authors: '艾瑞．卡爾',
-    category_id: bookCat.id, copies: 2, shelf_id: lv.body.id,
+    category_id: bookCat.id, copies: 2, shelf_id: top.body.id,
   });
   check('建立圖書 2 冊', book.status === 200 && book.body.copies.length === 2,
     JSON.stringify(book.body).slice(0, 120));
@@ -93,13 +91,13 @@ async function api(method, url, body) {
   console.log('\n[5] 掃碼還書並顯示櫃位');
   const scan2 = await api('POST', '/api/scan', { barcode });
   check('借出中的冊回 return', scan2.body.action === 'return', scan2.body.action);
-  check('櫃位字串正確組出「櫃 · 層」',
-    scan2.body.shelfLabel === `A櫃${tag} · 第2層`, scan2.body.shelfLabel);
+  check('櫃位字串就是書櫃名稱',
+    scan2.body.shelfLabel === `A櫃${tag}`, scan2.body.shelfLabel);
   check('帶回借閱人', scan2.body.borrower?.name === `小明${tag}`, scan2.body.borrower?.name);
 
   const ret = await api('POST', '/api/returns', { barcode });
-  check('歸還成功並回傳櫃位', ret.status === 200 && ret.body.shelfLabel.includes('第2層'),
-    ret.body.shelfLabel);
+  check('歸還成功並回傳櫃位',
+    ret.status === 200 && ret.body.shelfLabel === `A櫃${tag}`, ret.body.shelfLabel);
 
   const retAgain = await api('POST', '/api/returns', { barcode });
   check('沒借出的冊不能歸還（409）', retAgain.status === 409, `實際 ${retAgain.status}`);
@@ -167,7 +165,8 @@ async function api(method, url, body) {
   const backup = await api('GET', '/api/export/backup.json');
   check('完整備份含七張表', Object.keys(backup.body.tables).length === 7);
   check('備份含 counters（沒有它還原後會撞號）',
-    Array.isArray(backup.body.tables.counters) && backup.body.tables.counters.length === 2);
+    Array.isArray(backup.body.tables.counters) && backup.body.tables.counters.length === 4,
+    `counters=${backup.body.tables.counters?.length}`);
 
   console.log('\n[12] 批量匯入');
   const cats2 = await api('GET', '/api/categories');
@@ -195,10 +194,65 @@ async function api(method, url, body) {
       JSON.stringify(noKey.body));
   }
 
+  console.log('\n[14] 修改');
+  const titleId = book.body.title.id;
+  const renamed = await api('PUT', `/api/titles/${titleId}`,
+    { title: `改過書名${tag}`, authors: '改過作者' });
+  check('書目可以改名與改作者',
+    renamed.status === 200 && renamed.body.title === `改過書名${tag}`,
+    JSON.stringify(renamed.body).slice(0, 100));
+  const isbnClash = await api('PUT', `/api/titles/${toy.body.title.id}`,
+    { isbn13: `978000000${tag}` });
+  check('改成別人已在用的 ISBN 被擋（409）', isbnClash.status === 409,
+    `實際 ${isbnClash.status}`);
+  const shelfRenamed = await api('PUT', `/api/shelves/${top.body.id}`, { name: `改名櫃${tag}` });
+  check('書櫃可以改名', shelfRenamed.status === 200 && shelfRenamed.body.name === `改名櫃${tag}`);
+  check('書櫃改名不影響代碼', shelfRenamed.body.code === top.body.code);
+  const newCat = await api('POST', '/api/categories', { name: `有聲書${tag}`, kind: 'book' });
+  check('類型只填名稱就能建立，代碼自動產生',
+    newCat.status === 200 && /^C[0-9]{3}$/.test(newCat.body.code ?? ''),
+    `code=${newCat.body.code}`);
+
+  console.log('\n[15] 刪除防護要講人話');
+  const delShelf = await api('DELETE', `/api/shelves/${top.body.id}`);
+  check('書櫃還有書時不可刪除（409）', delShelf.status === 409, `實際 ${delShelf.status}`);
+  check('訊息講得出還有幾本', /\d/.test(delShelf.body?.error ?? ''), delShelf.body?.error);
+  check('訊息沒有資料庫術語',
+    !/foreign key|constraint|violates/i.test(delShelf.body?.error ?? ''), delShelf.body?.error);
+
+  const delTitle = await api('DELETE', `/api/titles/${titleId}`);
+  check('還有冊的書目不可刪除（409）', delTitle.status === 409, delTitle.body?.error);
+
+  const delUsedCopy = await api('DELETE', `/api/copies/${book.body.copies[0].id}`);
+  check('有借閱紀錄的冊不可刪除（409）', delUsedCopy.status === 409, delUsedCopy.body?.error);
+  check('並建議改標記遺失', /遺失/.test(delUsedCopy.body?.error ?? ''), delUsedCopy.body?.error);
+
+  const delBorrower = await api('DELETE', `/api/borrowers/${borrower.body.id}`);
+  check('有紀錄的借閱人不可刪除（409）', delBorrower.status === 409, delBorrower.body?.error);
+  check('並建議改用停用', /停用/.test(delBorrower.body?.error ?? ''), delBorrower.body?.error);
+
+  // 沒借過、也沒被用到的資料要真的刪得掉，否則防護就變成「什麼都刪不掉」
+  const freshShelf = await api('POST', '/api/shelves', { name: `空櫃${tag}` });
+  check('空書櫃可以刪除',
+    (await api('DELETE', `/api/shelves/${freshShelf.body.id}`)).status === 200);
+  check('沒有館藏在用的類型可以刪除',
+    (await api('DELETE', `/api/categories/${newCat.body.id}`)).status === 200);
+
+  console.log('\n[16] 借閱人停用');
+  await api('PUT', `/api/borrowers/${borrower.body.id}`, { active: false });
+  const activeList = await api('GET', '/api/borrowers');
+  check('停用後不出現在預設清單（借書下拉也看不到）',
+    !activeList.body.some((b) => b.id === borrower.body.id));
+  const allList = await api('GET', '/api/borrowers?includeInactive=1');
+  check('但管理畫面叫得出來', allList.body.some((b) => b.id === borrower.body.id));
+  await api('PUT', `/api/borrowers/${borrower.body.id}`, { active: true });
+  check('可以再啟用',
+    (await api('GET', '/api/borrowers')).body.some((b) => b.id === borrower.body.id));
+
   // 還原會清掉整個資料庫，預設不跑——這台機器上可能有使用者手動輸入的資料。
   // 要驗證還原路徑請加參數：node scripts/e2e-smoke.js --include-restore
   if (process.argv.includes('--include-restore')) {
-    console.log('\n[14] 還原（原地還原剛才那份備份）');
+    console.log('\n[17] 還原（原地還原剛才那份備份）');
     const before = (await api('GET', '/api/titles')).body.length;
     const r = await api('POST', '/api/import/restore',
       { backup: backup.body, confirm: true });
@@ -208,7 +262,7 @@ async function api(method, url, body) {
     check('還原後書目數回到備份當時', after === backup.body.tables.titles.length,
       `還原前畫面 ${before} 筆、備份 ${backup.body.tables.titles.length} 筆、還原後 ${after} 筆`);
   } else {
-    console.log('\n[14] 還原 —— 已跳過（會清空資料庫）。要驗請加 --include-restore');
+    console.log('\n[17] 還原 —— 已跳過（會清空資料庫）。要驗請加 --include-restore');
   }
 
   console.log(`\n=== 結果：${pass} 通過、${fail} 失敗 ===`);
