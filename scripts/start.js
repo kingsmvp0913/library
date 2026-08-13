@@ -21,8 +21,9 @@ try {
 
 const port = cfg.PORT ?? 3940;
 process.env.DATABASE_URL = cfg.DATABASE_URL;
-process.env.GOOGLE_BOOKS_API_KEY = cfg.GOOGLE_BOOKS_API_KEY ?? '';
 process.env.PORT = String(port);
+// 金鑰刻意不注入 env：它由 lib/settings.js 在需要時直接讀設定檔，
+// 使用者從設定頁改完才能立刻生效。放這裡會變成第二個來源，改了卻要重啟。
 
 // 必須排在開瀏覽器之前，否則瀏覽器會連上剛更新前的舊進程，且畫面看不出異狀。
 const { freePort } = require(path.join(ROOT, 'scripts', 'free-port.js'));

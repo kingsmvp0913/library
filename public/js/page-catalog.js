@@ -188,8 +188,9 @@ function showBookForm() {
     if (!r.online) {
       hintEl.textContent = '目前沒有網路，無法自動帶資料，請直接手動填寫。';
     } else if (r.hint === 'no-api-key') {
-      hintEl.textContent = '尚未設定 Google Books 金鑰，目前不會自動帶資料（所有書都一樣）。'
-        + '設定方式：把金鑰填進 data\\config.json 的 GOOGLE_BOOKS_API_KEY 後重新啟動。';
+      // 給連結而不是叫使用者去改設定檔——他不該需要知道 config.json 存在。
+      hintEl.innerHTML = '尚未設定 Google Books 金鑰，目前掃任何書都不會自動帶資料。'
+        + '<a href="/settings.html">前往設定</a>（免費申請，頁面上有步驟）。';
     } else if (!r.found) {
       hintEl.textContent = '查不到這本書的資料，請手動填寫。';
     }

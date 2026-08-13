@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db.js');
 const net = require('../lib/net-status.js');
+const settings = require('../lib/settings.js');
 const { lookupIsbn } = require('../lib/isbn/index.js');
 
 const router = express.Router();
@@ -36,7 +37,9 @@ router.get('/lookup/isbn/:isbn', async (req, res, next) => {
     }
 
     // 3) 外部來源
-    const apiKey = process.env.GOOGLE_BOOKS_API_KEY ?? '';
+    // 從設定檔即時讀取，不用 process.env——使用者在網頁上改完金鑰要立刻生效，
+    // 若吃啟動時注入的 env，就得重開系統才會作用。
+    const apiKey = settings.getGoogleKey();
     const info = await lookupIsbn(isbn, { apiKey });
     if (!info) {
       // 沒金鑰時 Google provider 根本不發請求，NCL 也還沒接通，等於一本都查不到。

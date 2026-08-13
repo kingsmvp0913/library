@@ -37,6 +37,9 @@ paths:
 11. **測試改寫要保住原測試的 intent，不是只讓它變綠** —— 否則覆蓋率會靜默塌陷。
 12. **測試要建關聯資料先建父列** —— `copies.title_id` → `titles`，`titles.category_id` → `categories`，`loans.copy_id` → `copies`。
 13. **外部 ISBN API 一律 mock，測試絕不打外網。** NCL 爬蟲的解析邏輯用**存檔的 HTML 樣本**驗證。
+14. **測試絕不可讀到真正的 `data/config.json`**（2026-08-13 實際踩到）—— 否則「尚未設定金鑰」這類前提會因為開發機剛好設了金鑰而不成立，測試靜默失去意義，而且換一台機器結果就不同。
+    已用 `server/tests/setup-env.js`（jest `setupFiles`）把 `LIBRARY_CONFIG_PATH` 指到暫存檔全域隔離。
+    ⚠️ **這件事必須靠環境變數，不能只靠 `settings.setConfigPath()`** —— `jest.resetModules()` 會把模組內變數重置回預設路徑，setter 蓋不住。**新增任何讀設定的模組時，一律走 `lib/settings.js`，不要自己 `readFileSync` 設定檔。**
 
 ## 本專案必測的行為
 

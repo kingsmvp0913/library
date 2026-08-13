@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>設定 · 圖書管理系統</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <nav>
+    <a href="/index.html">借還台</a>
+    <a href="/catalog.html">館藏</a>
+    <a href="/shelves.html">書櫃</a>
+    <a href="/borrowers.html">借閱人</a>
+    <a href="/loans.html">借閱紀錄</a>
+    <a href="/tools.html">匯入匯出</a>
+    <a href="/settings.html">設定</a>
+    <span class="omni">
+      <input id="omni" placeholder="搜尋書名、作者、編號、借閱人、書櫃…" autocomplete="off">
+      <div class="omni-panel" id="omniPanel"></div>
+    </span>
+    <span class="net-badge">偵測中…</span>
+  </nav>
+  <main>
+    <div class="card">
+      <h3>掃 ISBN 自動帶書名（Google Books 金鑰）</h3>
+      <p class="muted">
+        設定之後，新增圖書時掃 ISBN 就會自動帶出書名、作者、出版社與封面。
+        <strong>沒有設定也能用</strong>，只是每一本都要手動填。
+      </p>
+
+      <p>目前狀態：<span id="status" class="badge">讀取中…</span>
+        <span id="masked" class="muted"></span></p>
+
+      <div class="row">
+        <input id="apiKey" placeholder="貼上金鑰（AIza 開頭）" autocomplete="off"
+               style="max-width:420px">
+        <button id="testBtn">測試看看</button>
+        <button class="primary" id="saveBtn">儲存</button>
+      </div>
+      <div id="testResult" class="muted" style="margin-top:10px"></div>
+      <p class="muted" style="margin-top:14px">
+        存好後<strong>立刻生效</strong>，不用重新啟動系統。<br>
+        要停用自動帶資料的話，把欄位清空再按儲存即可。
+      </p>
+    </div>
+
+    <div class="card">
+      <h3>還沒有金鑰？申請步驟（免費，不用綁信用卡）</h3>
+      <ol>
+        <li>到 <a href="https://console.cloud.google.com/projectcreate" target="_blank"
+            rel="noopener">建立專案</a>，名稱隨便填，按「建立」。</li>
+        <li>到 <a href="https://console.cloud.google.com/apis/library/books.googleapis.com"
+            target="_blank" rel="noopener">Books API 頁面</a>，確認左上角是剛建的專案，按「啟用」。</li>
+        <li>到 <a href="https://console.cloud.google.com/apis/credentials" target="_blank"
+            rel="noopener">憑證頁面</a>，按「建立憑證」→「API 金鑰」，複製那串 AIza 開頭的字。</li>
+        <li>貼到上面的欄位，按「測試看看」確認可用，再按「儲存」。</li>
+      </ol>
+      <p class="muted">
+        建議在憑證頁面把這把金鑰的「API 限制」設成只允許 Books API，這樣萬一外流也只能拿來查書。
+      </p>
+    </div>
+
+    <div class="card">
+      <h3>先說清楚這個功能的極限</h3>
+      <p class="muted">
+        Google Books 對<strong>台灣出版的中文童書涵蓋率並不好</strong>，尤其是這兩年的新書，
+        常常查不到，就算查到也多半沒有封面圖。查不到時系統會直接展開手動填寫表單，
+        ISBN 已經幫你帶入，你填書名並自己拍張照上傳當封面即可，不會卡住借還流程。
+      </p>
+    </div>
+  </main>
+  <script src="/js/app.js"></script>
+  <script src="/js/omnisearch.js"></script>
+  <script src="/js/page-settings.js"></script>
+</body>
+</html>

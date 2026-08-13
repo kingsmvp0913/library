@@ -136,33 +136,24 @@ describe('GET /api/lookup/isbn/:isbn', () => {
   // 沒有金鑰時 Google provider 直接回 null 不發請求，NCL 又還沒接通，
   // 結果是「所有 ISBN 都查不到」。前端若只說「查不到這本書」，使用者會以為是那本書的問題，
   // 實際上是整個自動補資料沒有生效——必須回報得出來，才能顯示正確的說明。
+  // 金鑰的來源是設定檔（使用者從設定頁改），不是環境變數。
   test('沒有設定金鑰時要回報 no-api-key，而不是單純的查無', async () => {
     const { app } = await freshApp();
-    const prev = process.env.GOOGLE_BOOKS_API_KEY;
-    process.env.GOOGLE_BOOKS_API_KEY = '';
-    try {
-      const res = await request(app).get('/api/lookup/isbn/9786264063463').expect(200);
-      expect(res.body.found).toBe(false);
-      expect(res.body.hint).toBe('no-api-key');
-    } finally {
-      process.env.GOOGLE_BOOKS_API_KEY = prev;
-    }
+    require('../lib/settings.js').updateConfig({ GOOGLE_BOOKS_API_KEY: '' });
+    const res = await request(app).get('/api/lookup/isbn/9786264063463').expect(200);
+    expect(res.body.found).toBe(false);
+    expect(res.body.hint).toBe('no-api-key');
   });
 
   test('有金鑰時查無資料不該回 no-api-key', async () => {
     const { app } = await freshApp();
-    const prev = process.env.GOOGLE_BOOKS_API_KEY;
-    process.env.GOOGLE_BOOKS_API_KEY = 'dummy-key';
+    require('../lib/settings.js').updateConfig({ GOOGLE_BOOKS_API_KEY: 'dummy-key' });
     global.fetch = jest.fn().mockResolvedValue({
       ok: true, status: 200, json: async () => ({ totalItems: 0 }), text: async () => '',
     });
-    try {
-      const res = await request(app).get('/api/lookup/isbn/9786264063463').expect(200);
-      expect(res.body.found).toBe(false);
-      expect(res.body.hint).not.toBe('no-api-key');
-    } finally {
-      process.env.GOOGLE_BOOKS_API_KEY = prev;
-    }
+    const res = await request(app).get('/api/lookup/isbn/9786264063463').expect(200);
+    expect(res.body.found).toBe(false);
+    expect(res.body.hint).not.toBe('no-api-key');
   });
 
   // 這是離線需求的核心斷言：不只是「回得快」，而是「完全沒發出請求」。
