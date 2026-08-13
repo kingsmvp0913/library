@@ -26,6 +26,8 @@ button.primary { background: var(--accent); color: #fff; border-color: transpare
 button.danger { background: var(--danger); color: #fff; border-color: transparent; }
 input, select, textarea { font: inherit; padding: 10px; border-radius: 8px;
          border: 1px solid var(--border); background: var(--card); color: var(--text); width: 100%; }
+/* 單選／核取方塊不吃上面那條 width:100%，否則會撐滿整行、文字被擠到下一行。 */
+input[type="radio"], input[type="checkbox"] { width: auto; margin-right: 6px; }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--border); }
 .muted { color: var(--muted); }

@@ -3,9 +3,24 @@ const maskedEl = document.getElementById('masked');
 const keyEl = document.getElementById('apiKey');
 const resultEl = document.getElementById('testResult');
 
+const labelResultEl = document.getElementById('labelResult');
+const widthEl = document.getElementById('labelWidth');
+const heightEl = document.getElementById('labelHeight');
+
+/** 選 A4 時貼紙尺寸沒有意義，藏起來免得使用者以為要填。 */
+function paintLabelForm(printer) {
+  document.querySelectorAll('input[name="labelPrinter"]').forEach((r) => {
+    r.checked = r.value === printer;
+  });
+  document.getElementById('labelSizeRow').style.display = printer === 'b21' ? '' : 'none';
+}
+
 async function loadStatus() {
   try {
     const s = await Api.get('/api/settings');
+    widthEl.value = s.labelWidthMm;
+    heightEl.value = s.labelHeightMm;
+    paintLabelForm(s.labelPrinter);
     if (s.hasGoogleBooksApiKey) {
       statusEl.textContent = '已設定';
       statusEl.className = 'badge badge-in';
@@ -61,6 +76,31 @@ document.getElementById('saveBtn').addEventListener('click', async (e) => {
   } finally {
     btn.disabled = false;
     btn.textContent = '儲存';
+  }
+});
+
+document.querySelectorAll('input[name="labelPrinter"]').forEach((radio) => {
+  radio.addEventListener('change', () => paintLabelForm(radio.value));
+});
+
+document.getElementById('saveLabel').addEventListener('click', async (e) => {
+  const btn = e.target;
+  btn.disabled = true;
+  try {
+    const s = await Api.put('/api/settings', {
+      labelPrinter: document.querySelector('input[name="labelPrinter"]:checked').value,
+      labelWidthMm: Number(widthEl.value),
+      labelHeightMm: Number(heightEl.value),
+    });
+    labelResultEl.textContent = s.labelPrinter === 'b21'
+      ? `已設定為 B21，貼紙 ${s.labelWidthMm} × ${s.labelHeightMm} mm。去館藏頁按「列印」就會送到標籤機。`
+      : '已設定為 A4 貼紙。去館藏頁按「列印」會開啟一般的列印視窗。';
+    showToast('已儲存');
+  } catch (err) {
+    labelResultEl.textContent = '⚠️ ' + err.message;
+    showToast(err.message, 'error');
+  } finally {
+    btn.disabled = false;
   }
 });
 

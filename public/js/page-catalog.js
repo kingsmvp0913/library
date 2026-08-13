@@ -44,7 +44,7 @@ async function loadList(q = '') {
 }
 
 /** 只把條碼送去列印——列印出來是要剪下來貼在書上的，其他東西都是干擾。 */
-function printBarcodes(copies) {
+function printBarcodesOnA4(copies) {
   const area = document.getElementById('printArea');
   area.innerHTML = '';
   for (const c of copies) {
@@ -57,6 +57,44 @@ function printBarcodes(copies) {
     area.appendChild(cell);
   }
   window.print();
+}
+
+/**
+ * 送去 NIIMBOT B21 標籤機，一張貼紙一冊。
+ * 中途失敗要講清楚印到第幾張——不然老師不知道哪幾本已經有標籤、哪幾本要重印。
+ */
+async function printBarcodesOnB21(copies, cfg) {
+  // 貼紙寬度換算成點之後要取 8 的倍數（一個 byte 存 8 個點），且不能超過印字頭。
+  const cols = Math.min(NiimbotB21.PRINTHEAD_DOTS,
+    Math.floor(NiimbotB21.mmToDots(cfg.labelWidthMm) / 8) * 8);
+  const rows = NiimbotB21.mmToDots(cfg.labelHeightMm);
+
+  for (let i = 0; i < copies.length; i++) {
+    try {
+      await NiimbotB21.printCanvas(renderCode39Label(copies[i].barcode, cols, rows));
+    } catch (err) {
+      // 使用者按了「取消」不是故障，講成失敗會讓他以為機器壞了。
+      const reason = err.name === 'NotFoundError' ? '沒有選擇標籤機' : err.message;
+      showToast(`${i ? `已印出前 ${i} 張，` : ''}${copies[i].barcode} 沒印成：${reason}`, 'error');
+      return;
+    }
+  }
+  showToast(`已送出 ${copies.length} 張標籤`);
+}
+
+let labelCfg = null;
+
+/**
+ * 依設定決定印到哪裡。設定讀不到就走 A4——
+ * 列印是天天在用的功能，不能因為讀不到設定就整個不能印。
+ */
+async function printBarcodes(copies) {
+  if (!labelCfg) {
+    try { labelCfg = await Api.get('/api/settings'); }
+    catch { labelCfg = { labelPrinter: 'a4' }; }
+  }
+  if (labelCfg.labelPrinter === 'b21') return printBarcodesOnB21(copies, labelCfg);
+  printBarcodesOnA4(copies);
 }
 
 /**

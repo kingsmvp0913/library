@@ -38,6 +38,19 @@ function getGoogleKey() {
   return String(readConfig().GOOGLE_BOOKS_API_KEY ?? '').trim();
 }
 
+/**
+ * 編號標籤要印到哪裡、貼紙多大。
+ * 預設 A4——沒有標籤機的人佔多數，而且 A4 不必先接任何硬體就印得出來。
+ */
+function getLabelSettings() {
+  const cfg = readConfig();
+  return {
+    printer: cfg.LABEL_PRINTER === 'b21' ? 'b21' : 'a4',
+    widthMm: Number(cfg.LABEL_WIDTH_MM) || 50,
+    heightMm: Number(cfg.LABEL_HEIGHT_MM) || 30,
+  };
+}
+
 /** 只露出頭尾，讓使用者認得出是哪一把，但看不到完整值。 */
 function maskKey(key) {
   const k = String(key ?? '').trim();
@@ -46,4 +59,6 @@ function maskKey(key) {
   return `${k.slice(0, 6)}••••••${k.slice(-4)}`;
 }
 
-module.exports = { readConfig, updateConfig, getGoogleKey, maskKey, setConfigPath, getConfigPath };
+module.exports = {
+  readConfig, updateConfig, getGoogleKey, getLabelSettings, maskKey, setConfigPath, getConfigPath,
+};

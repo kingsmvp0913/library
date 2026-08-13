@@ -3,24 +3,57 @@ const settings = require('../lib/settings.js');
 
 const router = express.Router();
 
-router.get('/settings', (req, res) => {
+// B21 貼紙最寬 50mm。高度上限抓 100mm，再長就不是貼在書上的編號標籤了。
+const SIZE_LIMITS = { labelWidthMm: [20, 50], labelHeightMm: [10, 100] };
+
+function currentSettings() {
   const key = settings.getGoogleKey();
-  res.json({
+  const label = settings.getLabelSettings();
+  return {
     hasGoogleBooksApiKey: !!key,
     googleBooksApiKeyMasked: settings.maskKey(key),
-  });
+    labelPrinter: label.printer,
+    labelWidthMm: label.widthMm,
+    labelHeightMm: label.heightMm,
+  };
+}
+
+router.get('/settings', (req, res) => {
+  res.json(currentSettings());
 });
 
-// 只開放金鑰。DATABASE_URL／PORT 改錯會讓系統整個開不起來，
+// 只開放金鑰與標籤設定。DATABASE_URL／PORT 改錯會讓系統整個開不起來，
 // 那是維護者的事，不該從網頁改。
 router.put('/settings', (req, res, next) => {
   try {
-    if (req.body.googleBooksApiKey === undefined) {
+    const patch = {};
+
+    if (req.body.googleBooksApiKey !== undefined) {
+      patch.GOOGLE_BOOKS_API_KEY = String(req.body.googleBooksApiKey).trim();  // 貼上時很容易多帶空白
+    }
+
+    if (req.body.labelPrinter !== undefined) {
+      if (!['a4', 'b21'].includes(req.body.labelPrinter)) {
+        return res.status(400).json({ error: '標籤輸出方式只能選「A4 貼紙」或「NIIMBOT B21」' });
+      }
+      patch.LABEL_PRINTER = req.body.labelPrinter;
+    }
+
+    for (const [field, [min, max]] of Object.entries(SIZE_LIMITS)) {
+      if (req.body[field] === undefined) continue;
+      const mm = Number(req.body[field]);
+      if (!Number.isFinite(mm) || mm < min || mm > max) {
+        const what = field === 'labelWidthMm' ? '寬度' : '高度';
+        return res.status(400).json({ error: `標籤${what}請填 ${min} 到 ${max} 之間的數字（單位 mm）` });
+      }
+      patch[field === 'labelWidthMm' ? 'LABEL_WIDTH_MM' : 'LABEL_HEIGHT_MM'] = mm;
+    }
+
+    if (!Object.keys(patch).length) {
       return res.status(400).json({ error: '沒有要修改的設定' });
     }
-    const key = String(req.body.googleBooksApiKey).trim();  // 貼上時很容易多帶空白
-    settings.updateConfig({ GOOGLE_BOOKS_API_KEY: key });
-    res.json({ ok: true, hasGoogleBooksApiKey: !!key, googleBooksApiKeyMasked: settings.maskKey(key) });
+    settings.updateConfig(patch);
+    res.json({ ok: true, ...currentSettings() });
   } catch (err) { next(err); }
 });
 

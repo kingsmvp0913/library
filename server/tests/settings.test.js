@@ -99,6 +99,48 @@ describe('設定讀寫', () => {
   });
 });
 
+describe('編號標籤輸出設定', () => {
+  // 沒有標籤機的人佔多數，預設值錯了他們一按列印就是壞的。
+  test('沒設定過就是 A4', async () => {
+    const { app } = await setup({});
+    const res = await request(app).get('/api/settings').expect(200);
+    expect(res.body.labelPrinter).toBe('a4');
+    expect(res.body.labelWidthMm).toBe(50);
+    expect(res.body.labelHeightMm).toBe(30);
+  });
+
+  test('選了 B21 與貼紙尺寸會寫回設定檔', async () => {
+    const { app, cfgPath } = await setup({ GOOGLE_BOOKS_API_KEY: 'AIzaKEEP' });
+    const res = await request(app).put('/api/settings')
+      .send({ labelPrinter: 'b21', labelWidthMm: 40, labelHeightMm: 25 }).expect(200);
+    expect(res.body.labelPrinter).toBe('b21');
+
+    const saved = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+    expect(saved.LABEL_PRINTER).toBe('b21');
+    expect(saved.LABEL_WIDTH_MM).toBe(40);
+    expect(saved.GOOGLE_BOOKS_API_KEY).toBe('AIzaKEEP');   // 只改標籤不可以順手清掉金鑰
+  });
+
+  // 貼紙比 B21 的印字頭寬，印出來會缺一角；填得下去卻印不對是最難查的那種問題。
+  test('尺寸超出範圍要擋下來且不寫檔', async () => {
+    const { app, cfgPath } = await setup({});
+    const res = await request(app).put('/api/settings')
+      .send({ labelPrinter: 'b21', labelWidthMm: 80 }).expect(400);
+    expect(res.body.error).toMatch(/寬度/);
+    expect(JSON.parse(fs.readFileSync(cfgPath, 'utf8')).LABEL_WIDTH_MM).toBeUndefined();
+  });
+
+  test('不認得的輸出方式要擋下來', async () => {
+    const { app } = await setup({});
+    await request(app).put('/api/settings').send({ labelPrinter: 'laserjet' }).expect(400);
+  });
+
+  test('沒帶任何看得懂的設定就回 400', async () => {
+    const { app } = await setup({});
+    await request(app).put('/api/settings').send({ 隨便: 1 }).expect(400);
+  });
+});
+
 describe('測試金鑰按鈕', () => {
   test('金鑰有效時回 ok', async () => {
     const { app } = await setup({});

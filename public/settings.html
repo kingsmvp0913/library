@@ -70,6 +70,44 @@
         ISBN 已經幫你帶入，你填書名並自己拍張照上傳當封面即可，不會卡住借還流程。
       </p>
     </div>
+
+    <div class="card">
+      <h3>編號標籤印到哪裡</h3>
+      <p class="muted">
+        新增書冊之後印出來、貼在書背上的編號貼紙。<strong>預設用 A4</strong>，不必接任何設備。
+      </p>
+
+      <div class="row">
+        <label><input type="radio" name="labelPrinter" value="a4" checked>
+          A4 貼紙（一次印一整張，自己剪下來貼）</label>
+        <label><input type="radio" name="labelPrinter" value="b21">
+          NIIMBOT B21 標籤機（藍牙，一張貼紙一冊）</label>
+      </div>
+
+      <div class="row">
+        <span class="row" id="labelSizeRow" style="display:none">
+          <label style="white-space:nowrap">貼紙寬（mm）<input type="number" id="labelWidth"
+                 min="20" max="50" style="max-width:80px"></label>
+          <label style="white-space:nowrap">高（mm）<input type="number" id="labelHeight"
+                 min="10" max="100" style="max-width:80px"></label>
+        </span>
+        <button class="primary" id="saveLabel">儲存</button>
+      </div>
+      <div id="labelResult" class="muted" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card">
+      <h3>選 B21 之前要知道的三件事</h3>
+      <ul class="muted">
+        <li><strong>要用 Chrome 或 Edge 開這個系統</strong>，其他瀏覽器沒有網頁藍牙功能。
+          每次重開瀏覽器後第一次列印，會跳出一個視窗要你選 B21，選過之後同一次使用都不會再問。</li>
+        <li><strong>買 50mm 寬的貼紙。</strong>B21 實際印得出來的只有 48mm，編號條碼本身就要 36mm，
+          50mm 的貼紙左右各留得下 6mm 空白，掃碼槍才好認。
+          40mm 的貼紙雖然印得下，左右只剩 2mm，掃起來會比較挑角度。</li>
+        <li><strong>熱感貼紙會褪色</strong>：B21 是靠加熱顯色、不用碳帶，貼紙受熱或日曬久了字會變淡。
+          編號是這本書永久的身分，若要撐好幾年，A4 雷射貼紙加一層透明膠帶反而更耐。</li>
+      </ul>
+    </div>
   </main>
   <script src="/js/app.js"></script>
   <script src="/js/omnisearch.js"></script>
