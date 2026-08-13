@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>借還台 · 圖書管理系統</title>
+  <title>書櫃 · 圖書管理系統</title>
   <link rel="stylesheet" href="/css/app.css">
 </head>
-<body>
+<body data-resource="shelves">
   <nav>
     <a href="/index.html">借還台</a>
     <a href="/catalog.html">館藏</a>
@@ -20,22 +20,15 @@
     <span class="net-badge">偵測中…</span>
   </nav>
   <main>
-    <div class="card scan-box">
-      <div class="row">
-        <input id="scan" placeholder="掃描書本上的編號（或直接輸入後按 Enter）" autocomplete="off">
-        <button id="camera" class="no-print">📷 用鏡頭掃</button>
-      </div>
-      <video id="video" hidden playsinline style="width:100%;max-width:420px;margin-top:12px"></video>
-    </div>
-    <div id="result"></div>
-    <div class="card">
-      <h3>目前外借中</h3>
-      <table><tbody id="openLoans"></tbody></table>
-    </div>
+    <p class="muted">先建「櫃」（不填所屬櫃），需要分層時再建「層」並選它的所屬櫃。只有一個櫃子就不用建層。</p>
+    <div id="form"></div>
+    <div class="card"><table>
+      <thead><tr><th>代碼</th><th>名稱</th><th>所屬櫃</th><th></th></tr></thead>
+      <tbody id="list"></tbody>
+    </table></div>
   </main>
   <script src="/js/app.js"></script>
   <script src="/js/omnisearch.js"></script>
-  <script src="/js/scan-input.js"></script>
-  <script src="/js/page-scan.js"></script>
+  <script src="/js/page-masters.js"></script>
 </body>
 </html>

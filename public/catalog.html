@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>借還台 · 圖書管理系統</title>
+  <title>館藏 · 圖書管理系統</title>
   <link rel="stylesheet" href="/css/app.css">
 </head>
 <body>
@@ -20,22 +20,22 @@
     <span class="net-badge">偵測中…</span>
   </nav>
   <main>
-    <div class="card scan-box">
+    <div class="card no-print">
       <div class="row">
-        <input id="scan" placeholder="掃描書本上的編號（或直接輸入後按 Enter）" autocomplete="off">
-        <button id="camera" class="no-print">📷 用鏡頭掃</button>
+        <button class="primary" id="addBook">📕 新增圖書（掃 ISBN）</button>
+        <button id="addToy">🧩 新增教具（手動）</button>
+        <input id="filter" placeholder="篩選書名／作者／ISBN" style="max-width:280px">
       </div>
-      <video id="video" hidden playsinline style="width:100%;max-width:420px;margin-top:12px"></video>
     </div>
-    <div id="result"></div>
-    <div class="card">
-      <h3>目前外借中</h3>
-      <table><tbody id="openLoans"></tbody></table>
-    </div>
+    <div id="form"></div>
+    <div class="card"><table>
+      <thead><tr><th>書名</th><th>作者</th><th>類型</th><th>在架／總數</th><th></th></tr></thead>
+      <tbody id="list"></tbody>
+    </table></div>
   </main>
   <script src="/js/app.js"></script>
   <script src="/js/omnisearch.js"></script>
-  <script src="/js/scan-input.js"></script>
-  <script src="/js/page-scan.js"></script>
+  <script src="/js/barcode.js"></script>
+  <script src="/js/page-catalog.js"></script>
 </body>
 </html>
