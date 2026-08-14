@@ -47,6 +47,27 @@ const RESPONSE_OF = {
 /** 標籤紙材質。1 = 一般有間隙的貼紙，就是 B21 出廠附的那種。 */
 const LABEL_TYPE_WITH_GAPS = 1;
 
+/**
+ * 啟動指令的四種組合。⚠️ 這是暫時的診斷用表，確認之後只留對的那一組。
+ *
+ * 實機（B21S）目前的表現是：紙照走、每個指令都正常回應、機器自稱 100%，紙上全白，
+ * 而 PrintStatus 回報的已印頁數是 0——「機器根本沒被告知要印幾份」完全符合這個樣子。
+ * 份數可能要帶在 PrintStart，也可能要帶在 SetPageSize，手上沒有 B21S 的實機抓包，
+ * 所以不猜：由測試列印一次印四張，讓紙自己指出哪一組會出墨。
+ */
+const START_VARIANTS = [
+  { name: '現行寫法（都不帶份數）', startQty: false, sizeQty: false },
+  { name: 'PrintStart 帶份數', startQty: true, sizeQty: false },
+  { name: 'SetPageSize 帶份數', startQty: false, sizeQty: true },
+  { name: '兩支都帶份數', startQty: true, sizeQty: true },
+];
+
+/**
+ * 收尾前至少等這麼久。判定不出「印完了沒」之前，這是唯一能保證不把工作提早中止的做法——
+ * 0xf3 太早送就是「紙有走、紙上全白」的成因，寧可每張多花兩秒半。
+ */
+const MIN_PRINT_MS = 2500;
+
 /** 封包：55 55 [cmd] [len] [data...] [checksum] AA AA，checksum 是 cmd 起算到 data 結束的 XOR。 */
 function buildPacket(cmd, data) {
   const body = [cmd, data.length, ...data];
@@ -188,11 +209,6 @@ function noteBitmap(image, packets) {
   note(`點陣封包 ${packets.length} 個（${kinds}），最大 ${maxLen} bytes`);
 }
 
-/** PrintStatus 的回應：頁碼(2 byte) + 這一頁的兩段進度(各 1 byte)。兩段都到 100 才是真的印完。 */
-function isPagePrinted(data) {
-  return data.length >= 4 && data[2] === 100 && data[3] === 100;
-}
-
 const conn = { device: null, channel: null, buf: new Uint8Array(), waiting: null };
 
 function handleNotification(event) {
@@ -250,6 +266,7 @@ async function findChannel(gatt) {
 const NiimbotB21 = {
   DPI: B21.dpi,
   PRINTHEAD_DOTS: B21.printheadDots,
+  START_VARIANTS,
   mmToDots,
 
   /** Chrome／Edge 才有 Web Bluetooth，而且必須是 localhost 或 https。 */
@@ -303,10 +320,11 @@ const NiimbotB21 = {
    * 白色以外的顏色一律當黑點，所以 canvas 一定要先填白底——
    * 剛建好的 canvas 是透明的，透明會被當成全黑，整張變成一片黑。
    */
-  async printCanvas(canvas, { density = B21.densityDefault } = {}) {
+  async printCanvas(canvas, { density = B21.densityDefault, variant = 0 } = {}) {
     if (canvas.width > B21.printheadDots) {
       throw new Error(`標籤太寬（${canvas.width} 點），B21 最多只能印 ${B21.printheadDots} 點（約 48mm）`);
     }
+    const start = START_VARIANTS[variant] ?? START_VARIANTS[0];
     // 每張標籤重來一次。診斷要的是「這一張為什麼不對」，接在一起反而找不到。
     diag.t0 = Date.now();
     diag.lines = [
@@ -314,6 +332,7 @@ const NiimbotB21 = {
       `時間：${new Date().toLocaleString('zh-TW')}`,
       `瀏覽器：${navigator.userAgent}`,
       `標籤：${canvas.width} × ${canvas.height} 點，濃度 ${density}`,
+      `啟動指令組合：${start.name}`,
     ];
     await this.connect();
 
@@ -332,38 +351,29 @@ const NiimbotB21 = {
 
     await command(CMD.SetDensity, [density]);
     await command(CMD.SetLabelType, [LABEL_TYPE_WITH_GAPS]);
-    await command(CMD.PrintStart);
+    await command(CMD.PrintStart, start.startQty ? [...u16(1), 0, 0, 0] : [1]);
 
     await command(CMD.PageStart);
-    await command(CMD.SetPageSize, [...u16(image.rows), ...u16(image.cols)]);
+    await command(CMD.SetPageSize, start.sizeQty
+      ? [...u16(image.rows), ...u16(image.cols), ...u16(1)]
+      : [...u16(image.rows), ...u16(image.cols)]);
     for (const packet of rowPackets) await writePacket(packet);             // 點陣列不會有回應
+    const pageEndAt = Date.now();
     await command(CMD.PageEnd, [1], 10000);
 
-    // PageEnd 之後絕對不能馬上送 PrintEnd。
-    //
-    // 0xf3 是「結束列印」，不是「印好了沒」——實機紀錄裡它在資料到齊後 36ms 就回 01，
-    // 而 30mm 的紙不可能在 36ms 內走完。等於在機器還沒印之前就把工作中止掉：
-    // 紙照走、每個指令都正常回應、程式判定成功，紙上卻整張全白。
-    //
-    // 正確做法是問 PrintStatus，機器說這一頁印完了才收尾。
-    //
-    // 問不到就一路等到上限（約 15 秒）再收尾，不當成失敗——這是刻意的：
-    // 判讀不出回應時，多等永遠比早收尾好，因為早收尾會直接印出一張白紙。
-    let printed = false;
-    for (let i = 0; i < 30 && !printed; i++) {
-      let status;
-      try {
-        status = await command(CMD.PrintStatus, [1], 5000);
-      } catch {
-        note('機器不回應 PrintStatus，改用固定等待');
-        await new Promise((r) => setTimeout(r, 3000));
-        break;
-      }
-      printed = isPagePrinted(status.data);
-      if (printed) note(`機器回報這一頁印完了（問了 ${i + 1} 次）`);
-      else await new Promise((r) => setTimeout(r, 500));
+    // 問一次 PrintStatus 只是為了把機器的回應留進紀錄，不拿來當收尾依據：
+    // 實機在 PageEnd 之後 61ms 就回報 100%，那個數字顯然不是「印完了」。
+    try {
+      await command(CMD.PrintStatus, [1], 5000);
+    } catch {
+      note('機器不回應 PrintStatus');
     }
-    if (!printed) note('等到上限機器都沒回報印完（紙上若有東西，就是回應格式不同，不是卡紙）');
+
+    // 收尾一律等滿 MIN_PRINT_MS。0xf3 是「結束列印」不是「印好了沒」，
+    // 太早送就會在機器還沒印之前把工作中止掉——紙照走、每個指令都正常回應、
+    // 程式判定成功，紙上卻整張全白。判定不出進度之前，只能靠時間保證紙走得完。
+    const dwell = MIN_PRINT_MS - (Date.now() - pageEndAt);
+    if (dwell > 0) await new Promise((r) => setTimeout(r, dwell));
 
     await command(CMD.PrintEnd, [1], 5000);
     note('這一張收尾完成');
@@ -377,5 +387,5 @@ const NiimbotB21 = {
 
 // 讓封包編碼能被 node 測試檢查（瀏覽器照常用全域物件）。
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { buildPacket, parsePackets, encodeBitmap, bitmapPackets, pixelCountBytes, indexBlackPixels, isPagePrinted, mmToDots, CMD };
+  module.exports = { buildPacket, parsePackets, encodeBitmap, bitmapPackets, pixelCountBytes, indexBlackPixels, mmToDots, CMD };
 }
