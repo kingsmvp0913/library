@@ -1,5 +1,6 @@
 const {
-  buildPacket, parsePackets, encodeBitmap, bitmapPackets, pixelCountBytes, mmToDots, CMD,
+  buildPacket, parsePackets, encodeBitmap, bitmapPackets, pixelCountBytes,
+  isPagePrinted, mmToDots, CMD,
 } = require('../../public/js/niimbot.js');
 
 const hex = (bytes) => Buffer.from(bytes).toString('hex');
@@ -106,6 +107,30 @@ describe('點陣圖編碼', () => {
   test('黑點數量用 3 個 byte 帶，順序是 00 低位 高位', () => {
     expect(pixelCountBytes(4)).toEqual([0, 4, 0]);
     expect(pixelCountBytes(300)).toEqual([0, 0x2c, 0x01]);
+  });
+});
+
+/**
+ * 這一組驗的是「判斷錯的時候要往哪邊錯」，不是回應的欄位長相——
+ * 手上沒有 0xb3 的實機抓包，欄位位置目前是照協定文件寫的，還沒對照過。
+ *
+ * 會這樣寫是因為實機踩過：把「結束列印」的回應當成「印好了沒」，機器在資料到齊後
+ * 36ms 就回 01，程式判定成功並收尾，紙照走、每個指令都正常回應，紙上卻整張全白。
+ * 所以看不懂的回應一律不能算印完——多等只是慢，早收尾是直接印出一張白紙。
+ */
+describe('印完了沒', () => {
+  test('兩段進度都到 100 才算印完', () => {
+    expect(isPagePrinted(Uint8Array.from([0, 1, 100, 100]))).toBe(true);
+  });
+
+  test('只有一段到 100 不算印完', () => {
+    expect(isPagePrinted(Uint8Array.from([0, 1, 100, 99]))).toBe(false);
+    expect(isPagePrinted(Uint8Array.from([0, 1, 0, 100]))).toBe(false);
+  });
+
+  test('回應短到讀不出進度時寧可繼續等，不可當成印完', () => {
+    expect(isPagePrinted(Uint8Array.from([1]))).toBe(false);
+    expect(isPagePrinted(Uint8Array.from([]))).toBe(false);
   });
 });
 

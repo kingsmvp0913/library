@@ -25,6 +25,7 @@ const CMD = {
   PrintBitmapRow: 0x85,
   PrinterCheckLine: 0x86,
   PageEnd: 0xe3,
+  PrintStatus: 0xa3,
   PrintEnd: 0xf3,
 };
 
@@ -39,6 +40,7 @@ const RESPONSE_OF = {
   [CMD.SetPageSize]: 0x14,
   [CMD.PrinterCheckLine]: 0xd3,
   [CMD.PageEnd]: 0xe4,
+  [CMD.PrintStatus]: 0xb3,
   [CMD.PrintEnd]: 0xf4,
 };
 
@@ -184,6 +186,11 @@ function noteBitmap(image, packets) {
     .map(([cmd, n]) => `0x${Number(cmd).toString(16)}×${n}`).join('、');
   note(`點陣圖 ${image.cols}×${image.rows} 點，黑點 ${black} 個`);
   note(`點陣封包 ${packets.length} 個（${kinds}），最大 ${maxLen} bytes`);
+}
+
+/** PrintStatus 的回應：頁碼(2 byte) + 這一頁的兩段進度(各 1 byte)。兩段都到 100 才是真的印完。 */
+function isPagePrinted(data) {
+  return data.length >= 4 && data[2] === 100 && data[3] === 100;
 }
 
 const conn = { device: null, channel: null, buf: new Uint8Array(), waiting: null };
@@ -332,14 +339,34 @@ const NiimbotB21 = {
     for (const packet of rowPackets) await writePacket(packet);             // 點陣列不會有回應
     await command(CMD.PageEnd, [1], 10000);
 
-    // 印完才會回 1。這支同時是「結束列印」與「問印好了沒」，要一直問到它說好。
-    for (let i = 0; i < 60; i++) {
-      const res = await command(CMD.PrintEnd, [1], 5000);
-      if (res.data[0] === 1) { note('機器回報這一張印完了'); return; }
-      await new Promise((r) => setTimeout(r, 500));
+    // PageEnd 之後絕對不能馬上送 PrintEnd。
+    //
+    // 0xf3 是「結束列印」，不是「印好了沒」——實機紀錄裡它在資料到齊後 36ms 就回 01，
+    // 而 30mm 的紙不可能在 36ms 內走完。等於在機器還沒印之前就把工作中止掉：
+    // 紙照走、每個指令都正常回應、程式判定成功，紙上卻整張全白。
+    //
+    // 正確做法是問 PrintStatus，機器說這一頁印完了才收尾。
+    //
+    // 問不到就一路等到上限（約 15 秒）再收尾，不當成失敗——這是刻意的：
+    // 判讀不出回應時，多等永遠比早收尾好，因為早收尾會直接印出一張白紙。
+    let printed = false;
+    for (let i = 0; i < 30 && !printed; i++) {
+      let status;
+      try {
+        status = await command(CMD.PrintStatus, [1], 5000);
+      } catch {
+        note('機器不回應 PrintStatus，改用固定等待');
+        await new Promise((r) => setTimeout(r, 3000));
+        break;
+      }
+      printed = isPagePrinted(status.data);
+      if (printed) note(`機器回報這一頁印完了（問了 ${i + 1} 次）`);
+      else await new Promise((r) => setTimeout(r, 500));
     }
-    note('問了 60 次機器都沒說印完');
-    throw new Error('標籤機遲遲沒有印完，請檢查是否卡紙或缺紙');
+    if (!printed) note('等到上限機器都沒回報印完（紙上若有東西，就是回應格式不同，不是卡紙）');
+
+    await command(CMD.PrintEnd, [1], 5000);
+    note('這一張收尾完成');
   },
 
   /** 給「複製診斷紀錄」那顆按鈕用。沒印過任何東西時回空字串。 */
@@ -350,5 +377,5 @@ const NiimbotB21 = {
 
 // 讓封包編碼能被 node 測試檢查（瀏覽器照常用全域物件）。
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { buildPacket, parsePackets, encodeBitmap, bitmapPackets, pixelCountBytes, indexBlackPixels, mmToDots, CMD };
+  module.exports = { buildPacket, parsePackets, encodeBitmap, bitmapPackets, pixelCountBytes, indexBlackPixels, isPagePrinted, mmToDots, CMD };
 }
