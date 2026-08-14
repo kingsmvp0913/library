@@ -48,12 +48,8 @@ th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--border)
   border-radius: 999px; border: 1px solid var(--border); cursor: pointer; }
 .net-badge.offline { background: var(--danger); color: #fff; border-color: transparent; }
 
-/* 標籤機診斷：印出來不對時，讓使用者把紀錄原樣帶回給維護的人 */
-#b21diag { position: fixed; left: 16px; bottom: 16px; z-index: 45; max-width: 620px;
-  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
-  padding: 12px 16px; border-radius: 12px;
-  background: var(--card); border: 1px solid var(--border); }
-#b21diag textarea { font-family: monospace; font-size: 12px; }
+/* 標籤機診斷紀錄：剪貼簿被瀏覽器擋掉時，讓使用者自己 Ctrl+C 帶回來 */
+.diag-log { font-family: monospace; font-size: 12px; margin-top: 8px; }
 
 #toast { position: fixed; right: 16px; bottom: 16px; display: flex;
   flex-direction: column; gap: 8px; z-index: 50; }

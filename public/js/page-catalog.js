@@ -76,50 +76,10 @@ async function printBarcodesOnB21(copies, cfg) {
       // 使用者按了「取消」不是故障，講成失敗會讓他以為機器壞了。
       const reason = err.name === 'NotFoundError' ? '沒有選擇標籤機' : err.message;
       showToast(`${i ? `已印出前 ${i} 張，` : ''}${copies[i].barcode} 沒印成：${reason}`, 'error');
-      showB21Diagnostics(reason);
       return;
     }
   }
   showToast(`已送出 ${copies.length} 張標籤`);
-  showB21Diagnostics();
-}
-
-/**
- * 送完標籤就把「複製診斷紀錄」留在畫面上。
- *
- * 印出來是空白時整段流程一步都不會噴錯——機器收下每個指令、回應都正常，畫面上看不出異狀，
- * 所以不能只在失敗時才給。機器在使用者那邊，而他不會開 DevTools，只能給一顆按鈕
- * 讓他把位元組原樣帶回來。
- */
-function showB21Diagnostics(failure) {
-  let bar = document.getElementById('b21diag');
-  if (!bar) {
-    bar = document.createElement('div');
-    bar.id = 'b21diag';
-    document.body.appendChild(bar);
-  }
-  bar.innerHTML = `<span>標籤印出來不對嗎？（空白、印歪、少東西）</span>
-    <button class="primary" id="b21copy">複製診斷紀錄</button>
-    <button id="b21hide">關閉</button>`;
-
-  document.getElementById('b21hide').addEventListener('click', () => bar.remove());
-  document.getElementById('b21copy').addEventListener('click', async () => {
-    const log = NiimbotB21.diagnosticLog();
-    const text = (failure ? `列印中斷：${failure}\n\n` : '')
-      + (log || '（沒有任何紀錄——這一張根本沒送到標籤機）');
-    try {
-      await navigator.clipboard.writeText(text);
-      showToast('已複製。請貼到訊息裡傳給維護系統的人。');
-    } catch {
-      // 剪貼簿被瀏覽器擋掉時不能只說失敗，還是要讓他拿得到內容。
-      const box = document.createElement('textarea');
-      box.value = text;
-      box.rows = 8;
-      bar.querySelector('span').textContent = '瀏覽器擋掉了自動複製，請按 Ctrl+C 複製下面這段：';
-      document.getElementById('b21copy').replaceWith(box);
-      box.select();
-    }
-  });
 }
 
 let labelCfg = null;

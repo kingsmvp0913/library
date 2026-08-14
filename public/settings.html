@@ -94,6 +94,13 @@
         <button class="primary" id="saveLabel">儲存</button>
       </div>
       <div id="labelResult" class="muted" style="margin-top:10px"></div>
+
+      <div class="row" id="b21TestRow" style="display:none">
+        <button id="b21Test">列印測試標籤</button>
+        <span class="muted">印一張測試貼紙，並自動複製診斷紀錄。
+          印出來不對（空白、只印一半）時，把複製到的內容貼給維護系統的人。</span>
+      </div>
+      <div id="b21TestResult" class="muted"></div>
     </div>
 
     <div class="card">
@@ -111,6 +118,7 @@
   </main>
   <script src="/js/app.js"></script>
   <script src="/js/omnisearch.js"></script>
+  <script src="/js/niimbot.js"></script>
   <script src="/js/page-settings.js"></script>
 </body>
 </html>
