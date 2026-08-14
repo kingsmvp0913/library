@@ -149,6 +149,43 @@ function mmToDots(mm) {
 
 // ── 以下是瀏覽器才會跑到的部分（藍牙連線）。node 測試只用上面的純函式。 ──
 
+/**
+ * 診斷紀錄。印出來是空白時整段流程一步都不會噴錯——機器收下每一個指令、回應也正常，
+ * 只是紙上什麼都沒有。要判斷是哪一層出問題，唯一的線索是實際送出／收到的位元組，
+ * 而機器不在維護者手邊、使用者也不會開 DevTools，所以留在記憶體裡讓他一鍵複製回報。
+ */
+const diag = { lines: [], t0: 0 };
+
+function hex(bytes) {
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function note(text) {
+  // 一張標籤大約 60 行。超過就停，免得連印幾十張之後吃掉整個分頁的記憶體。
+  if (diag.lines.length === 400) diag.lines.push('（紀錄過長，以下省略）');
+  if (diag.lines.length >= 400) return;
+  diag.lines.push(`+${String(Date.now() - diag.t0).padStart(6)}ms  ${text}`);
+}
+
+/**
+ * 點陣圖摘要。這三個數字各自排掉一種可能：
+ * 黑點是 0 就是圖根本沒畫進 canvas；封包種類看得出走的是整列點陣還是座標；
+ * 最大封包大小則是判斷「有沒有大過藍牙單次寫入上限」的依據。
+ */
+function noteBitmap(image, packets) {
+  const black = image.parts.reduce((n, p) => n + (p.blackPixels ?? 0) * (p.repeat ?? 0), 0);
+  const byCmd = {};
+  let maxLen = 0;
+  for (const p of packets) {
+    byCmd[p[2]] = (byCmd[p[2]] ?? 0) + 1;
+    if (p.length > maxLen) maxLen = p.length;
+  }
+  const kinds = Object.entries(byCmd)
+    .map(([cmd, n]) => `0x${Number(cmd).toString(16)}×${n}`).join('、');
+  note(`點陣圖 ${image.cols}×${image.rows} 點，黑點 ${black} 個`);
+  note(`點陣封包 ${packets.length} 個（${kinds}），最大 ${maxLen} bytes`);
+}
+
 const conn = { device: null, channel: null, buf: new Uint8Array(), waiting: null };
 
 function handleNotification(event) {
@@ -160,13 +197,22 @@ function handleNotification(event) {
   const { packets, rest } = parsePackets(merged);
   conn.buf = rest;
   for (const p of packets) {
+    // 對不上自己這一支的封包也要記——機器主動送的進度通知同樣是線索。
+    note(`收 0x${p.cmd.toString(16).padStart(2, '0')} ${hex(p.data)}`);
     if (conn.waiting && p.cmd === conn.waiting.respId) conn.waiting.resolve(p);
   }
 }
 
 async function writePacket(packet) {
   if (!conn.channel) throw new Error('標籤機連線已中斷');
-  await conn.channel.writeValueWithoutResponse(packet.buffer);
+  note(`送 ${String(packet.length).padStart(3)}B ${hex(packet)}`);
+  try {
+    await conn.channel.writeValueWithoutResponse(packet.buffer);
+  } catch (err) {
+    // 封包大過藍牙單次寫入上限就是在這裡爆——整列點陣（0x85）最大，控制指令都很短。
+    note(`送不出去：${err.name} ${err.message}`);
+    throw err;
+  }
   await new Promise((r) => setTimeout(r, 10));      // 送太快機器會漏封包
 }
 
@@ -176,6 +222,7 @@ async function command(cmd, data = [1], timeoutMs = 2000) {
   const answer = new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       conn.waiting = null;
+      note(`等不到 0x${cmd.toString(16)} 的回應（等了 ${timeoutMs}ms）`);
       reject(new Error(`標籤機沒有回應（指令 0x${cmd.toString(16)}）`));
     }, timeoutMs);
     conn.waiting = { respId, resolve: (p) => { clearTimeout(timer); conn.waiting = null; resolve(p); } };
@@ -212,7 +259,7 @@ const NiimbotB21 = {
    * 所以連上後要把 device 留著，不能每印一張就重新選一次。
    */
   async connect() {
-    if (this.isConnected()) return;
+    if (this.isConnected()) { note('沿用已經連上的標籤機'); return; }
     if (!this.isSupported()) throw new Error('這個瀏覽器不支援藍牙列印，請改用 Chrome 或 Edge');
 
     if (!conn.device) {
@@ -233,6 +280,7 @@ const NiimbotB21 = {
     await channel.startNotifications();
     conn.channel = channel;
     conn.buf = new Uint8Array();
+    note(`已連上「${conn.device.name ?? '未命名裝置'}」，傳輸通道 ${channel.uuid}`);
     await command(CMD.Connect);
   },
 
@@ -252,6 +300,14 @@ const NiimbotB21 = {
     if (canvas.width > B21.printheadDots) {
       throw new Error(`標籤太寬（${canvas.width} 點），B21 最多只能印 ${B21.printheadDots} 點（約 48mm）`);
     }
+    // 每張標籤重來一次。診斷要的是「這一張為什麼不對」，接在一起反而找不到。
+    diag.t0 = Date.now();
+    diag.lines = [
+      'NIIMBOT B21 診斷紀錄（只保留最後送出的那一張標籤）',
+      `時間：${new Date().toLocaleString('zh-TW')}`,
+      `瀏覽器：${navigator.userAgent}`,
+      `標籤：${canvas.width} × ${canvas.height} 點，濃度 ${density}`,
+    ];
     await this.connect();
 
     const px = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
@@ -264,22 +320,31 @@ const NiimbotB21 = {
       },
     });
 
+    const rowPackets = bitmapPackets(image);
+    noteBitmap(image, rowPackets);
+
     await command(CMD.SetDensity, [density]);
     await command(CMD.SetLabelType, [LABEL_TYPE_WITH_GAPS]);
     await command(CMD.PrintStart);
 
     await command(CMD.PageStart);
     await command(CMD.SetPageSize, [...u16(image.rows), ...u16(image.cols)]);
-    for (const packet of bitmapPackets(image)) await writePacket(packet);   // 點陣列不會有回應
+    for (const packet of rowPackets) await writePacket(packet);             // 點陣列不會有回應
     await command(CMD.PageEnd, [1], 10000);
 
     // 印完才會回 1。這支同時是「結束列印」與「問印好了沒」，要一直問到它說好。
     for (let i = 0; i < 60; i++) {
       const res = await command(CMD.PrintEnd, [1], 5000);
-      if (res.data[0] === 1) return;
+      if (res.data[0] === 1) { note('機器回報這一張印完了'); return; }
       await new Promise((r) => setTimeout(r, 500));
     }
+    note('問了 60 次機器都沒說印完');
     throw new Error('標籤機遲遲沒有印完，請檢查是否卡紙或缺紙');
+  },
+
+  /** 給「複製診斷紀錄」那顆按鈕用。沒印過任何東西時回空字串。 */
+  diagnosticLog() {
+    return diag.lines.join('\n');
   },
 };
 
