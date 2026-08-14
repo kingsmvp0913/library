@@ -179,6 +179,27 @@ describe('還原備份', () => {
     expect(next.body.copies[0].barcode).toBe('B-000004');
   });
 
+  // 還原的 INSERT 是逐欄列出的，加了新欄位卻忘了加進去，備份檔裡有值、還原後變成空的，
+  // 而且畫面上不會有任何錯誤——這是最容易靜默掉資料的一條路。
+  test('還原不會漏掉套書／繪者／譯者／頁數這些後加的欄位', async () => {
+    const { app, db, bookCat } = await setup();
+    const { body } = await request(app).post('/api/titles')
+      .send({ title: '套書第一集', category_id: bookCat.id, copies: 1 });
+    await db.query(
+      `UPDATE titles SET series=$1, volume=$2, illustrator=$3, translator=$4, pages=$5
+        WHERE id=$6`,
+      ['某某套書', '1', '繪者甲', '譯者乙', 40, body.title.id]);
+
+    const backup = (await request(app).get('/api/export/backup.json')).body;
+    await request(app).post('/api/import/restore').send({ backup, confirm: true }).expect(200);
+
+    const { rows } = await db.query(
+      `SELECT series, volume, illustrator, translator, pages FROM titles WHERE title='套書第一集'`);
+    expect(rows[0]).toEqual({
+      series: '某某套書', volume: '1', illustrator: '繪者甲', translator: '譯者乙', pages: 40,
+    });
+  });
+
   // 內部 id 可以換，但 barcode 絕對不行——它已經印出來貼在實體書上了。
   test('還原後 barcode 與備份完全一致', async () => {
     const { app, bookCat } = await setup();

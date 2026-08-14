@@ -46,6 +46,143 @@ document.getElementById('doImport').addEventListener('click', async (e) => {
   }
 });
 
+// ---- BookBuddy 匯入 ----
+// 兩段式：先產生預覽列表（其他欄位全部預填好），使用者只挑「櫃位」與「冊數」，
+// 確認過整張表再送出。BookBuddy 檔本來就沒有這兩項，猜不得。
+let bbRows = [];
+let bbShelves = [];
+let bbCategories = [];
+
+function bbShelfOptions(selected) {
+  return `<option value="">未指定櫃位</option>`
+    + bbShelves.map((s) => `<option value="${s.id}"${Number(selected) === s.id ? ' selected' : ''}>
+        ${esc(s.name)}</option>`).join('');
+}
+
+function bbRowHtml(r, i) {
+  const meta = [r.subtitle, r.authors, r.publisher, r.published_date]
+    .filter(Boolean).join(' · ');
+  // 擋下來的列不給勾也不給改——讓它還能編輯，只會讓使用者以為改一改就能匯進去。
+  const pickCells = r.blocked
+    ? `<td colspan="2" class="muted">${esc(r.blocked)}</td>`
+    : `<td><select class="bb-shelf" data-i="${i}" style="min-width:140px">
+           ${bbShelfOptions(r.shelf_id)}</select></td>
+       <td><input type="number" class="bb-copies" data-i="${i}"
+           min="1" max="99" value="${r.copies}" style="width:80px"></td>`;
+  return `<tr>
+    <td><input type="checkbox" class="bb-pick" data-i="${i}"
+      ${r.blocked ? 'disabled' : 'checked'}></td>
+    <td>${esc(r.title)}<br><small class="muted">${esc(meta)}</small></td>
+    <td><small>${esc(r.isbn13 ?? '')}</small></td>
+    ${pickCells}
+  </tr>`;
+}
+
+function bbPaint(data) {
+  bbRows = data.rows;
+  const panel = document.getElementById('bbPanel');
+  panel.innerHTML = `
+    <div class="row" style="margin-top:14px">
+      <label style="width:auto">類型（整批套用）</label>
+      <select id="bbCat" style="max-width:180px">
+        ${bbCategories.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}
+      </select>
+      <label style="width:auto">櫃位</label>
+      <select id="bbShelfAll" style="max-width:200px">${bbShelfOptions('')}</select>
+      <button id="bbApplyShelf">套用到全部</button>
+    </div>
+    <p class="muted">共讀到 ${data.total} 列，可匯入 <strong>${data.importable}</strong> 列，
+      ${data.total - data.importable} 列已存在或有問題（下表標註原因）。</p>
+    <table>
+      <thead><tr><th style="width:1%">匯入</th><th>書名</th><th>ISBN</th>
+        <th>櫃位</th><th>冊數</th></tr></thead>
+      <tbody>${bbRows.map(bbRowHtml).join('')}</tbody>
+    </table>
+    <div class="row" style="margin-top:12px">
+      <button class="primary" id="bbCommit">確認匯入</button>
+    </div>
+    <div id="bbResult"></div>`;
+
+  // 十幾列一個一個挑櫃位太折磨人，整批套用是這個畫面最常用的動作。
+  document.getElementById('bbApplyShelf').addEventListener('click', () => {
+    const v = document.getElementById('bbShelfAll').value;
+    document.querySelectorAll('.bb-shelf').forEach((s) => { s.value = v; });
+    showToast(v ? '已套用到全部' : '已把全部改成未指定櫃位');
+  });
+  document.getElementById('bbCommit').addEventListener('click', bbCommit);
+}
+
+/** 送出時以畫面上的值為準——使用者可能改過任何一個下拉或數字。 */
+function bbSelected() {
+  const categoryId = Number(document.getElementById('bbCat').value);
+  const shelfOf = new Map();
+  document.querySelectorAll('.bb-shelf').forEach((s) =>
+    shelfOf.set(Number(s.dataset.i), s.value ? Number(s.value) : null));
+  const copiesOf = new Map();
+  document.querySelectorAll('.bb-copies').forEach((n) =>
+    copiesOf.set(Number(n.dataset.i), Number(n.value) || 1));
+
+  const out = [];
+  document.querySelectorAll('.bb-pick').forEach((box) => {
+    if (!box.checked) return;
+    const i = Number(box.dataset.i);
+    out.push({ ...bbRows[i], category_id: categoryId,
+      shelf_id: shelfOf.get(i) ?? null, copies: copiesOf.get(i) ?? 1 });
+  });
+  return out;
+}
+
+async function bbCommit(e) {
+  const btn = e.target;
+  const rows = bbSelected();
+  if (!rows.length) return showToast('沒有勾選任何一列', 'error');
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> 匯入中…';
+  try {
+    const r = await Api.post('/api/import/bookbuddy', { rows });
+    const errLine = r.errors.length
+      ? `<p class="muted">下列 ${r.errors.length} 列沒有建立：</p>
+         <table><thead><tr><th>列號</th><th>書名</th><th>原因</th></tr></thead><tbody>
+         ${r.errors.map((x) => `<tr><td>${x.row}</td><td>${esc(x.title)}</td>
+            <td>${esc(x.message)}</td></tr>`).join('')}</tbody></table>`
+      : '<p class="muted">沒有任何錯誤。</p>';
+    document.getElementById('bbResult').innerHTML =
+      `<p>建立 <strong>${r.created}</strong> 筆書目、<strong>${r.copies}</strong> 冊，
+        抓到封面 ${r.covers} 張。</p>` + errLine;
+    showToast(r.errors.length ? `建立 ${r.created} 筆，${r.errors.length} 列有問題`
+      : `建立 ${r.created} 筆、${r.copies} 冊`, r.errors.length ? 'error' : 'ok');
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '確認匯入';
+  }
+}
+
+document.getElementById('bbPreview').addEventListener('click', async (e) => {
+  const btn = e.target;
+  const text = await readFileText(document.getElementById('bbFile'));
+  if (text === null) return showToast('請先選擇 BookBuddy 匯出的 CSV 檔', 'error');
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> 讀取中…';
+  document.getElementById('bbPanel').innerHTML = '';
+  try {
+    if (!bbCategories.length) {
+      [bbCategories, bbShelves] = await Promise.all([
+        Api.get('/api/categories'), Api.get('/api/shelves'),
+      ]);
+    }
+    bbPaint(await Api.post('/api/import/bookbuddy/preview', { csv: text }));
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '產生預覽列表';
+  }
+});
+
 // ---- 還原備份 ----
 document.getElementById('doRestore').addEventListener('click', async (e) => {
   const btn = e.target;

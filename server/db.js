@@ -37,9 +37,14 @@ const DDL = [
      isbn13 TEXT UNIQUE,
      title TEXT NOT NULL,
      subtitle TEXT,
+     series TEXT,
+     volume TEXT,
      authors TEXT,
+     illustrator TEXT,
+     translator TEXT,
      publisher TEXT,
      published_date TEXT,
+     pages INTEGER,
      description TEXT,
      cover_path TEXT,
      category_id INTEGER NOT NULL REFERENCES categories(id),
@@ -80,6 +85,21 @@ const DDL = [
    )`,
 ];
 
+/**
+ * 給**既有**資料庫補欄位用。
+ *
+ * 上面的 `CREATE TABLE IF NOT EXISTS` 只對全新安裝有效——表已經存在時整段被跳過，
+ * 既有資料庫不會長出新欄位，接著第一次 INSERT 就炸，而開發機若是全新建的完全測不出來。
+ * **加欄位一律兩邊都要寫**：DDL 給新安裝、這裡給已經在跑的。
+ */
+const ADD_COLUMNS = [
+  ['titles', 'series', 'TEXT'],
+  ['titles', 'volume', 'TEXT'],
+  ['titles', 'illustrator', 'TEXT'],
+  ['titles', 'translator', 'TEXT'],
+  ['titles', 'pages', 'INTEGER'],
+];
+
 const SEED_CATEGORIES = [
   ['picture-book', '繪本', 'book', 10],
   ['bridge-book', '橋樑書', 'book', 20],
@@ -91,6 +111,11 @@ const SEED_CATEGORIES = [
 /** 每次啟動都會跑，必須 idempotent。 */
 async function migrate() {
   for (const ddl of DDL) await query(ddl);
+
+  // ADD COLUMN IF NOT EXISTS 本身就 idempotent，每次啟動重跑是安全的。
+  for (const [table, col, type] of ADD_COLUMNS) {
+    await query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${col} ${type}`);
+  }
 
   // 一冊同時只能有一筆未歸還紀錄。這是資料庫層的最後防線，不可只靠應用層檢查。
   // pg-mem 若不支援 partial index，測試環境略過，但真實 PG 必須建起來。

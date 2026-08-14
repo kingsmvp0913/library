@@ -24,6 +24,33 @@ describe('migrate', () => {
     );
   });
 
+  // 只在 CREATE TABLE 加欄位，既有資料庫（表已存在）不會長出來，
+  // 接著第一次 INSERT 就炸，而全新建的開發機完全測不出來。
+  // 這裡從一個「舊版 titles」開始，模擬升級路徑。
+  test('既有資料庫也會被補上後來新增的欄位', async () => {
+    const db = freshDb();
+    await db.query(`CREATE TABLE titles (
+      id SERIAL PRIMARY KEY, title TEXT NOT NULL, category_id INTEGER NOT NULL)`);
+    await db.migrate();
+    const { rows } = await db.query(
+      `SELECT column_name FROM information_schema.columns WHERE table_name='titles'`);
+    const cols = rows.map((r) => r.column_name);
+    for (const c of ['series', 'volume', 'illustrator', 'translator', 'pages']) {
+      expect(cols).toContain(c);
+    }
+  });
+
+  test('全新安裝的 titles 一樣有那些欄位', async () => {
+    const db = freshDb();
+    await db.migrate();
+    const { rows } = await db.query(
+      `SELECT column_name FROM information_schema.columns WHERE table_name='titles'`);
+    const cols = rows.map((r) => r.column_name);
+    for (const c of ['series', 'volume', 'illustrator', 'translator', 'pages']) {
+      expect(cols).toContain(c);
+    }
+  });
+
   // migrate 每次啟動都會跑，不 idempotent 就會讓系統第二次開不起來。
   test('重複執行不會出錯', async () => {
     const db = freshDb();

@@ -112,8 +112,8 @@ router.post('/:id/cover', upload.single('cover'), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-const EDITABLE = ['title', 'subtitle', 'authors', 'publisher', 'published_date',
-  'description', 'category_id'];
+const EDITABLE = ['title', 'subtitle', 'series', 'volume', 'authors', 'illustrator',
+  'translator', 'publisher', 'published_date', 'pages', 'description', 'category_id'];
 
 router.put('/:id', async (req, res, next) => {
   try {
@@ -130,7 +130,14 @@ router.put('/:id', async (req, res, next) => {
     for (const f of EDITABLE) {
       if (req.body[f] === undefined) continue;
       const v = typeof req.body[f] === 'string' ? req.body[f].trim() : req.body[f];
-      vals.push(v === '' ? null : v);
+      if (f === 'pages') {
+        // pages 是 INTEGER。收到「abc」會讓整個 UPDATE 噴 500，連同其他欄位一起改不了；
+        // 非正整數一律當作沒填。
+        const n = Math.floor(Number(v));
+        vals.push(Number.isFinite(n) && n > 0 ? n : null);
+      } else {
+        vals.push(v === '' ? null : v);
+      }
       sets.push(`${f} = $${vals.length}`);
     }
 

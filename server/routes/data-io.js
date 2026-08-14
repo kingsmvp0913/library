@@ -4,6 +4,9 @@ const express = require('express');
 const db = require('../db.js');
 const { toCsv, parseCsv } = require('../lib/csv.js');
 const { nextBarcode } = require('../lib/barcode-no.js');
+const { mapRows, COVER_MIN_BYTES } = require('../lib/bookbuddy.js');
+const { saveCoverFromUrl } = require('../lib/cover.js');
+const { isOnline } = require('../lib/net-status.js');
 
 const router = express.Router();
 
@@ -211,6 +214,132 @@ router.post('/import/titles', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ---- BookBuddy 專用匯入 ----
+// 分成「預覽」與「實際匯入」兩支：BookBuddy 檔沒有櫃位也沒有冊數，
+// 那兩件事只有人知道，一定要先讓使用者看過整張表再決定。
+
+const nz = (v) => {
+  const s = v === null || v === undefined ? '' : String(v).trim();
+  return s || null;
+};
+
+/** 頁數欄位：非正整數一律當作沒填，不要把 0 或 NaN 寫進資料庫。 */
+const posInt = (v) => {
+  const n = Math.floor(Number(v));
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+router.post('/import/bookbuddy/preview', async (req, res, next) => {
+  try {
+    const parsed = mapRows(req.body.csv ?? '');
+    if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+
+    const [titles, shelves] = await Promise.all([
+      db.query('SELECT id, isbn13, title FROM titles'),
+      db.query('SELECT id, name, code FROM shelves'),
+    ]);
+    const existingByIsbn = new Map();
+    for (const t of titles.rows) if (t.isbn13) existingByIsbn.set(t.isbn13, t);
+    const shelfByName = new Map();
+    for (const s of shelves.rows) {
+      shelfByName.set(s.name.trim(), s);
+      if (s.code) shelfByName.set(s.code.trim(), s);
+    }
+
+    // 重複要在匯入前就攤開。等到匯入完才說「這 8 本已經有了」，
+    // 使用者已經分不出哪些是這次建的、哪些是舊的。
+    const seen = new Set();
+    for (const r of parsed.rows) {
+      if (!r.title) {
+        r.blocked = '這一列沒有書名';
+      } else if (r.isbn13 && existingByIsbn.has(r.isbn13)) {
+        r.blocked = `系統裡已經有這本了（${existingByIsbn.get(r.isbn13).title}）`;
+      } else if (r.isbn13 && seen.has(r.isbn13)) {
+        r.blocked = '同一個檔案裡出現兩次';
+      } else {
+        r.blocked = null;
+      }
+      if (r.isbn13) seen.add(r.isbn13);
+      r.shelf_id = r.location_hint ? (shelfByName.get(r.location_hint)?.id ?? null) : null;
+    }
+
+    res.json({
+      rows: parsed.rows,
+      total: parsed.rows.length,
+      importable: parsed.rows.filter((r) => !r.blocked).length,
+    });
+  } catch (err) { next(err); }
+});
+
+router.post('/import/bookbuddy', async (req, res, next) => {
+  try {
+    const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
+    if (!rows.length) return res.status(400).json({ error: '沒有勾選任何要匯入的資料' });
+
+    const { rows: cats } = await db.query('SELECT id, kind FROM categories');
+    const catById = new Map(cats.map((c) => [c.id, c]));
+
+    // 封面是選配。離線時整批跳過，不要讓每一列各等一次 timeout——
+    // 建檔不該因為抓不到封面而卡住，這跟借還書不依賴網路是同一條規則。
+    const online = await isOnline();
+
+    const errors = [];
+    let created = 0;
+    let copiesCreated = 0;
+    let coversSaved = 0;
+
+    for (const r of rows) {
+      const rowNo = r.row_no ?? '?';
+      const title = String(r.title ?? '').trim();
+      try {
+        if (!title) throw new Error('缺少書名');
+        const cat = catById.get(Number(r.category_id));
+        if (!cat) throw new Error('沒有指定類型，或指定的類型已經不存在');
+
+        const isbn = String(r.isbn13 ?? '').replace(/[^0-9Xx]/g, '') || null;
+        if (isbn) {
+          const dup = await db.query('SELECT id FROM titles WHERE isbn13 = $1', [isbn]);
+          if (dup.rows.length) throw new Error(`ISBN ${isbn} 已經建過了`);
+        }
+
+        const coverPath = online && r.cover_url
+          ? await saveCoverFromUrl(r.cover_url, isbn ?? `bb-${rowNo}`,
+            { minBytes: COVER_MIN_BYTES })
+          : null;
+        if (coverPath) coversSaved++;
+
+        const { rows: [t] } = await db.query(
+          `INSERT INTO titles (isbn13, title, subtitle, series, volume, authors, illustrator,
+                               translator, publisher, published_date, pages,
+                               description, cover_path, category_id, source)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'bookbuddy') RETURNING id`,
+          [isbn, title, nz(r.subtitle), nz(r.series), nz(r.volume), nz(r.authors),
+            nz(r.illustrator), nz(r.translator), nz(r.publisher), nz(r.published_date),
+            posInt(r.pages), nz(r.description), coverPath, cat.id]
+        );
+
+        const n = Math.max(1, Math.min(99, Math.floor(Number(r.copies)) || 1));
+        const shelfId = r.shelf_id ? Number(r.shelf_id) : null;
+        for (let k = 0; k < n; k++) {
+          const barcode = await nextBarcode(cat.kind);
+          await db.query(
+            `INSERT INTO copies (barcode, title_id, shelf_id, acquired_at)
+             VALUES ($1,$2,$3,$4)`,
+            [barcode, t.id, shelfId, nz(r.acquired_at)]
+          );
+          copiesCreated++;
+        }
+        created++;
+      } catch (err) {
+        // 一列出錯只記這一列，其餘照樣建立——否則使用者要一次修一個錯。
+        errors.push({ row: rowNo, title, message: err.message });
+      }
+    }
+
+    res.json({ created, copies: copiesCreated, covers: coversSaved, errors, total: rows.length });
+  } catch (err) { next(err); }
+});
+
 router.post('/import/restore', async (req, res, next) => {
   try {
     const backup = req.body.backup;
@@ -252,13 +381,19 @@ router.post('/import/restore', async (req, res, next) => {
           row.note ?? null, row.sort_order ?? 0, row.active ?? true]);
       map.shelves.set(row.id, n.id);
     }
+    // 這串欄位必須跟 titles 的實際欄位保持同步——漏一個，還原就會靜默把那一欄清空，
+    // 而備份檔裡明明有值。加欄位時 db.js、匯入、這裡三個地方一起改。
     for (const row of backup.tables.titles) {
       const { rows: [n] } = await db.query(
-        `INSERT INTO titles (isbn13,title,subtitle,authors,publisher,published_date,
+        `INSERT INTO titles (isbn13,title,subtitle,series,volume,authors,illustrator,translator,
+                             publisher,published_date,pages,
                              description,cover_path,category_id,source)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
-        [row.isbn13, row.title, row.subtitle, row.authors, row.publisher, row.published_date,
-          row.description, row.cover_path, map.categories.get(row.category_id), row.source ?? 'manual']);
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id`,
+        [row.isbn13, row.title, row.subtitle, row.series ?? null, row.volume ?? null,
+          row.authors, row.illustrator ?? null, row.translator ?? null,
+          row.publisher, row.published_date, posInt(row.pages),
+          row.description, row.cover_path, map.categories.get(row.category_id),
+          row.source ?? 'manual']);
       map.titles.set(row.id, n.id);
     }
     for (const row of backup.tables.borrowers) {

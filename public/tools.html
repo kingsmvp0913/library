@@ -48,6 +48,21 @@
     </div>
 
     <div class="card">
+      <h3>從 BookBuddy 匯入</h3>
+      <p class="muted">
+        直接吃 BookBuddy 匯出的 CSV，不用先整理成範本格式。
+        書名、副標、作者、出版社、ISBN、簡介、出版年、登錄日期都會自動帶進來，
+        <strong>你只要挑櫃位和冊數</strong>。
+        按「產生預覽列表」先看過整張表，確認無誤再按最下面的匯入。
+      </p>
+      <div class="row">
+        <input type="file" id="bbFile" accept=".csv,text/csv" style="max-width:300px">
+        <button class="primary" id="bbPreview">產生預覽列表</button>
+      </div>
+      <div id="bbPanel"></div>
+    </div>
+
+    <div class="card">
       <h3>完整備份</h3>
       <p class="muted">
         含借還紀錄與編號流水號，是唯一能完整還原的格式。建議定期下載一份存到隨身碟。

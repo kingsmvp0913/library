@@ -98,6 +98,20 @@ async function printBarcodes(copies) {
 }
 
 /**
+ * 套書、繪者、譯者、頁數多半是空的（只有 BookBuddy 匯入的書才會有），
+ * 有值才顯示——每本都印一排「套書： 繪者： 譯者：」的空標籤只是雜訊。
+ */
+function extraMeta(t) {
+  const bits = [];
+  if (t.series) bits.push(`套書：${t.series}${t.volume ? ` 第 ${t.volume} 冊` : ''}`);
+  else if (t.volume) bits.push(`第 ${t.volume} 冊`);
+  if (t.illustrator) bits.push(`繪者：${t.illustrator}`);
+  if (t.translator) bits.push(`譯者：${t.translator}`);
+  if (t.pages) bits.push(`${t.pages} 頁`);
+  return bits;
+}
+
+/**
  * 明細含每一冊的編號條碼，可直接列印貼紙。
  * 同時是「補封面／教具照片」與「改櫃位」的入口——教具沒有 ISBN 抓不到圖，
  * 圖書也常常查不到封面，兩者都需要手動補。
@@ -112,6 +126,8 @@ async function showDetail(id) {
     <p class="muted">${isToy
       ? esc(t.description ?? '')
       : `${esc(t.authors ?? '')}　${esc(t.publisher ?? '')}　${esc(t.isbn13 ?? '')}`}</p>
+    ${isToy || !extraMeta(t).length ? ''
+      : `<p class="muted">${extraMeta(t).map(esc).join('　')}</p>`}
     <div class="row no-print">
       <button id="editTitle">編輯資料</button>
       <button id="addCopy">加冊</button>
@@ -253,8 +269,21 @@ function renderEditForm(t) {
       ? `<p><input id="e-note" placeholder="存放備註"
                    value="${esc(t.description ?? '')}"></p>`
       : `<p><input id="e-authors" placeholder="作者" value="${esc(t.authors ?? '')}"></p>
+         <div class="row">
+           <input id="e-illustrator" placeholder="繪者（可留空）"
+                  value="${esc(t.illustrator ?? '')}">
+           <input id="e-translator" placeholder="譯者（可留空）"
+                  value="${esc(t.translator ?? '')}">
+         </div>
          <p><input id="e-publisher" placeholder="出版社" value="${esc(t.publisher ?? '')}"></p>
-         <p><input id="e-isbn" placeholder="ISBN（可留空）" value="${esc(t.isbn13 ?? '')}"></p>`}
+         <p><input id="e-isbn" placeholder="ISBN（可留空）" value="${esc(t.isbn13 ?? '')}"></p>
+         <div class="row">
+           <input id="e-series" placeholder="套書名（可留空）" value="${esc(t.series ?? '')}">
+           <input id="e-volume" placeholder="第幾冊" style="max-width:120px"
+                  value="${esc(t.volume ?? '')}">
+           <input id="e-pages" type="number" min="1" placeholder="頁數" style="max-width:120px"
+                  value="${esc(t.pages ?? '')}">
+         </div>`}
     <div class="row">
       <select id="e-category" style="max-width:200px">
         ${cats.map((c) => `<option value="${c.id}"${c.id === t.category_id ? ' selected' : ''}>
@@ -276,8 +305,13 @@ function renderEditForm(t) {
       body.description = document.getElementById('e-note').value.trim();
     } else {
       body.authors = document.getElementById('e-authors').value.trim();
+      body.illustrator = document.getElementById('e-illustrator').value.trim();
+      body.translator = document.getElementById('e-translator').value.trim();
       body.publisher = document.getElementById('e-publisher').value.trim();
       body.isbn13 = document.getElementById('e-isbn').value.trim();
+      body.series = document.getElementById('e-series').value.trim();
+      body.volume = document.getElementById('e-volume').value.trim();
+      body.pages = document.getElementById('e-pages').value.trim();
     }
     if (!body.title) return showToast(isToy ? '請填寫教具名稱' : '請填寫書名', 'error');
 

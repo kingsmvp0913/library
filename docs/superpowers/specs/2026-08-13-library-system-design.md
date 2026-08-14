@@ -103,10 +103,21 @@ library/
 | isbn13 | TEXT UNIQUE | 教具為 NULL（PG 的 UNIQUE 允許多筆 NULL） |
 | title | TEXT NOT NULL | |
 | subtitle / authors / publisher / published_date / description | TEXT | |
+| series / volume | TEXT | 套書名與集數。**集數用 TEXT 不用 INT**——童書常出現「上」「下」「第一輯」 |
+| illustrator / translator | TEXT | 繪者／譯者。童書的繪者常常比作者更能辨識一本書 |
+| pages | INT | 頁數。只收正整數，0 與空白都當作沒填 |
 | cover_path | TEXT | 相對路徑，例 `data/covers/9789573317249.jpg` |
 | category_id | INT FK→categories NOT NULL | |
-| source | TEXT NOT NULL DEFAULT 'manual' | `google` / `ncl` / `manual` |
+| source | TEXT NOT NULL DEFAULT 'manual' | `google` / `ncl` / `manual` / `import` / `bookbuddy` |
 | created_at / updated_at | TIMESTAMPTZ | |
+
+`series` / `volume` / `illustrator` / `translator` / `pages` 這五個欄位的來源是 **BookBuddy 匯入**（見 6.x）；
+掃 ISBN 建檔的外部來源不提供這些值，一律留空，之後在館藏明細手動補。五個欄位都可編輯。
+
+> **加欄位必須同時改兩個地方**：`db.js` 的 `CREATE TABLE`（給全新安裝）與 `ADD_COLUMNS`（給既有資料庫）。
+> `CREATE TABLE IF NOT EXISTS` 對已經存在的表完全無效，只改前者的話既有資料庫不會長出欄位，
+> 接著第一次 INSERT 就會炸，而全新安裝的開發機完全測不出來。
+> 另外 `POST /api/import/restore` 的 INSERT 是逐欄列出的，**漏加欄位會讓還原靜默掉資料**。
 
 ### 3.4 `copies` 單冊 ← **這是借還的主體**
 

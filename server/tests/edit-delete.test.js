@@ -38,6 +38,36 @@ describe('書目修改', () => {
     expect(res.body.publisher).toBe('上誼');
   });
 
+  // 匯進來的資料一定會有打錯的。有欄位卻改不了，等於建了就定生死。
+  test('可以改套書、集數、繪者、譯者、頁數', async () => {
+    const { app, bookCat } = await setup();
+    const b = await makeBook(app, bookCat.id);
+    const res = await request(app).put(`/api/titles/${b.title.id}`).send({
+      series: '小熊系列', volume: '2', illustrator: '繪者甲', translator: '譯者乙', pages: '36',
+    }).expect(200);
+    expect(res.body).toMatchObject({
+      series: '小熊系列', volume: '2', illustrator: '繪者甲', translator: '譯者乙', pages: 36,
+    });
+  });
+
+  // 頁數是 INTEGER，收到非數字若直接送進 UPDATE 會噴 500，
+  // 連帶同一次送出的其他欄位也全部改不了。
+  test('頁數清空或填了非數字都當作沒填，不會讓整筆修改失敗', async () => {
+    const { app, bookCat } = await setup();
+    const b = await makeBook(app, bookCat.id);
+    await request(app).put(`/api/titles/${b.title.id}`).send({ pages: '36' }).expect(200);
+
+    const cleared = await request(app).put(`/api/titles/${b.title.id}`)
+      .send({ pages: '', title: '清空頁數後的書名' }).expect(200);
+    expect(cleared.body.pages).toBeNull();
+    expect(cleared.body.title).toBe('清空頁數後的書名');
+
+    const junk = await request(app).put(`/api/titles/${b.title.id}`)
+      .send({ pages: 'abc', authors: '照樣要改到' }).expect(200);
+    expect(junk.body.pages).toBeNull();
+    expect(junk.body.authors).toBe('照樣要改到');
+  });
+
   test('可以改類型', async () => {
     const { app, bookCat, toyCat } = await setup();
     const b = await makeBook(app, bookCat.id);
