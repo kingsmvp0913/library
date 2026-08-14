@@ -53,22 +53,28 @@ function code39DotWidth(text) {
 }
 
 /**
- * 把編號畫成要送去熱感標籤機的單色點陣圖（條碼在上、編號文字在下）。
+ * 把編號畫成要送去熱感標籤機的單色點陣圖（櫃位在最上、條碼在中、編號文字在下）。
  *
  * 尺寸單位是印字頭的「點」而不是 mm：熱感印字頭一個點就是一個黑點，
  * 條寬落在小數上會被四捨五入成一寬一窄，掃碼槍就讀不出來。
  * 所以這裡直接用整數點畫，畫完不可以再縮放。NARROW／WIDE 同時是 SVG 單位與點數，
  * 改動它們會同時影響 A4 列印與標籤機。
+ *
+ * shelf 留空就完全不印那一行，把高度讓給條碼——印「尚未指定櫃位」只是浪費貼紙。
  */
-function renderCode39Label(text, cols, rows) {
+function renderCode39Label(text, cols, rows, shelf = '') {
   const label = String(text).toUpperCase();
   const barsWidth = code39DotWidth(label);
   if (barsWidth > cols) {
     throw new Error(`編號 ${label} 的條碼需要 ${barsWidth} 點，比標籤可印寬度 ${cols} 點還寬`);
   }
   const textHeight = 28;                                    // 約 3.5mm，老師肉眼讀得到就夠
-  const barsHeight = rows - textHeight - 12;
-  if (barsHeight < 40) throw new Error(`標籤只有 ${rows} 點高，條碼會矮到掃不出來`);
+  const shelfHeight = shelf ? textHeight : 0;
+  const barsHeight = rows - textHeight - shelfHeight - 12;
+  if (barsHeight < 40) {
+    throw new Error(`標籤只有 ${rows} 點高，${shelf ? '加上櫃位之後' : ''}`
+      + '條碼會矮到掃不出來。請到設定頁把貼紙高度調大一點。');
+  }
 
   const canvas = document.createElement('canvas');
   canvas.width = cols;
@@ -80,13 +86,23 @@ function renderCode39Label(text, cols, rows) {
   ctx.fillRect(0, 0, cols, rows);
 
   ctx.fillStyle = '#000';
+
+  if (shelf) {
+    // 第四個參數是最大寬度：櫃位名稱是使用者自己取的，太長時讓它壓扁，不要靜默切掉。
+    ctx.font = `bold ${shelfHeight}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(shelf, cols / 2, 4, cols - 8);
+  }
+
+  const barsTop = 4 + shelfHeight;
   let x = Math.floor((cols - barsWidth) / 2);
   for (const ch of ('*' + label + '*').split('')) {
     const pattern = CODE39[ch];
     if (!pattern) throw new Error(`條碼不支援這個字元：${ch}`);
     for (let i = 0; i < pattern.length; i++) {
       const w = pattern[i] === 'w' ? WIDE : NARROW;
-      if (i % 2 === 0) ctx.fillRect(x, 4, w, barsHeight);   // 偶數位是黑條
+      if (i % 2 === 0) ctx.fillRect(x, barsTop, w, barsHeight);   // 偶數位是黑條
       x += w;
     }
     x += NARROW;

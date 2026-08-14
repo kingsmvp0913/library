@@ -93,6 +93,8 @@ button:disabled, input:disabled { opacity: .55; cursor: not-allowed; }
 .print-label { display: inline-block; text-align: center; margin: 6mm 4mm;
   page-break-inside: avoid; }
 .print-label div { font-size: 12pt; font-family: monospace; margin-top: 2mm; }
+/* 櫃位在條碼上方：中文不走 monospace，也不要跟著上面那條吃 margin-top */
+.print-label .print-shelf { font-family: inherit; font-weight: 700; margin: 0 0 1mm; }
 @media print {
   body > *:not(#printArea) { display: none !important; }
   #printArea { display: block !important; }

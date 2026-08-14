@@ -43,13 +43,28 @@ async function loadList(q = '') {
     b.addEventListener('click', () => showDetail(Number(b.dataset.id))));
 }
 
-/** 只把條碼送去列印——列印出來是要剪下來貼在書上的，其他東西都是干擾。 */
+/**
+ * 印在標籤上的櫃位。沒指定櫃位就回空字串，讓標籤完全不印那一行——
+ * 貼紙上印「尚未指定櫃位」對老師沒有任何用處，只是佔掉條碼的高度。
+ */
+function shelfNameOf(shelfId) {
+  return shelves.find((s) => s.id === shelfId)?.name ?? '';
+}
+
+/** 只把櫃位與條碼送去列印——列印出來是要剪下來貼在書上的，其他東西都是干擾。 */
 function printBarcodesOnA4(copies) {
   const area = document.getElementById('printArea');
   area.innerHTML = '';
   for (const c of copies) {
     const cell = document.createElement('div');
     cell.className = 'print-label';
+    const shelf = shelfNameOf(c.shelf_id);
+    if (shelf) {
+      const head = document.createElement('div');
+      head.className = 'print-shelf';
+      head.textContent = shelf;
+      cell.appendChild(head);
+    }
     cell.appendChild(renderCode39(c.barcode));
     const txt = document.createElement('div');
     txt.textContent = c.barcode;
@@ -71,7 +86,8 @@ async function printBarcodesOnB21(copies, cfg) {
 
   for (let i = 0; i < copies.length; i++) {
     try {
-      await NiimbotB21.printCanvas(renderCode39Label(copies[i].barcode, cols, rows));
+      await NiimbotB21.printCanvas(
+        renderCode39Label(copies[i].barcode, cols, rows, shelfNameOf(copies[i].shelf_id)));
     } catch (err) {
       // 使用者按了「取消」不是故障，講成失敗會讓他以為機器壞了。
       const reason = err.name === 'NotFoundError' ? '沒有選擇標籤機' : err.message;
@@ -181,6 +197,8 @@ async function showDetail(id) {
       shelfPick.addEventListener('change', async () => {
         try {
           await Api.put(`/api/copies/${c.id}`, { shelf_id: Number(shelfPick.value) || null });
+          // 標籤上會印櫃位，而這一頁不會重畫——不同步回去就會印出改之前的舊櫃位。
+          c.shelf_id = Number(shelfPick.value) || null;
           showToast('已更新櫃位');
         } catch (err) { showToast(err.message, 'error'); }
       });
