@@ -144,7 +144,7 @@ async function copyDiagnostics(failure, log) {
     await navigator.clipboard.writeText(text);
     head.textContent = failure
       ? `⚠️ ${failure}。診斷紀錄已複製，請貼給維護系統的人。`
-      : '✅ 測試標籤已送出，診斷紀錄已複製。請看看第幾張有印出東西，連同複製到的內容一起告訴維護系統的人。';
+      : '✅ 測試標籤已送出，診斷紀錄已複製。印出來的位置不對或印不出來的話，把它貼給維護系統的人。';
     showToast('診斷紀錄已複製');
   } catch {
     // 剪貼簿被擋掉時不能只說失敗，還是要讓他拿得到內容。
@@ -169,27 +169,19 @@ document.getElementById('b21Test').addEventListener('click', async (e) => {
   }
 
   btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> 列印中…';
   let failure = null;
-  const logs = [];
-
-  // 每一組啟動指令各印一張。哪一組會出墨只有紙看得出來，所以四張都印，
-  // 由使用者回報「第幾張有東西」——比再猜一次協定可靠得多。
-  const variants = NiimbotB21.START_VARIANTS;
-  for (let i = 0; i < variants.length && !failure; i++) {
-    btn.innerHTML = `<span class="spinner"></span> 列印第 ${i + 1} / ${variants.length} 張…`;
-    try {
-      await NiimbotB21.printCanvas(testLabelCanvas(cols, rows), { variant: i });
-    } catch (err) {
-      // 使用者按了「取消」不是故障，講成失敗會讓他以為機器壞了。
-      failure = err.name === 'NotFoundError' ? '沒有選擇標籤機' : err.message;
-      showToast(failure, 'error');
-    }
-    logs.push(`===== 第 ${i + 1} 張：${variants[i].name} =====\n${NiimbotB21.diagnosticLog()}`);
+  try {
+    await NiimbotB21.printCanvas(testLabelCanvas(cols, rows));
+  } catch (err) {
+    // 使用者按了「取消」不是故障，講成失敗會讓他以為機器壞了。
+    failure = err.name === 'NotFoundError' ? '沒有選擇標籤機' : err.message;
+    showToast(failure, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '列印測試標籤';
   }
-
-  btn.disabled = false;
-  btn.textContent = '列印測試標籤';
-  await copyDiagnostics(failure, logs.join('\n\n'));
+  await copyDiagnostics(failure, NiimbotB21.diagnosticLog());
 });
 
 createOmniSearch(document.getElementById('omni'), document.getElementById('omniPanel'));

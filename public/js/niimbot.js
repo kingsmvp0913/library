@@ -48,23 +48,12 @@ const RESPONSE_OF = {
 const LABEL_TYPE_WITH_GAPS = 1;
 
 /**
- * 啟動指令的四種組合。⚠️ 這是暫時的診斷用表，確認之後只留對的那一組。
+ * 收尾前至少等這麼久。
  *
- * 實機（B21S）目前的表現是：紙照走、每個指令都正常回應、機器自稱 100%，紙上全白，
- * 而 PrintStatus 回報的已印頁數是 0——「機器根本沒被告知要印幾份」完全符合這個樣子。
- * 份數可能要帶在 PrintStart，也可能要帶在 SetPageSize，手上沒有 B21S 的實機抓包，
- * 所以不猜：由測試列印一次印四張，讓紙自己指出哪一組會出墨。
- */
-const START_VARIANTS = [
-  { name: '現行寫法（都不帶份數）', startQty: false, sizeQty: false },
-  { name: 'PrintStart 帶份數', startQty: true, sizeQty: false },
-  { name: 'SetPageSize 帶份數', startQty: false, sizeQty: true },
-  { name: '兩支都帶份數', startQty: true, sizeQty: true },
-];
-
-/**
- * 收尾前至少等這麼久。判定不出「印完了沒」之前，這是唯一能保證不把工作提早中止的做法——
- * 0xf3 太早送就是「紙有走、紙上全白」的成因，寧可每張多花兩秒半。
+ * 這個等待是實機驗出來的，不是保守起見：0xf3 是「結束列印」不是「印好了沒」，
+ * 在 PageEnd 之後馬上送就會把還沒印的工作中止掉——紙照走、每個指令都正常回應、
+ * 機器自稱 100%，紙上卻整張全白。改成等滿 2.5 秒之後，同一組指令就印得出來了。
+ * 拿掉這個等待就會退回全白，不要因為「看起來多餘」就刪。
  */
 const MIN_PRINT_MS = 2500;
 
@@ -266,7 +255,6 @@ async function findChannel(gatt) {
 const NiimbotB21 = {
   DPI: B21.dpi,
   PRINTHEAD_DOTS: B21.printheadDots,
-  START_VARIANTS,
   mmToDots,
 
   /** Chrome／Edge 才有 Web Bluetooth，而且必須是 localhost 或 https。 */
@@ -320,11 +308,10 @@ const NiimbotB21 = {
    * 白色以外的顏色一律當黑點，所以 canvas 一定要先填白底——
    * 剛建好的 canvas 是透明的，透明會被當成全黑，整張變成一片黑。
    */
-  async printCanvas(canvas, { density = B21.densityDefault, variant = 0 } = {}) {
+  async printCanvas(canvas, { density = B21.densityDefault } = {}) {
     if (canvas.width > B21.printheadDots) {
       throw new Error(`標籤太寬（${canvas.width} 點），B21 最多只能印 ${B21.printheadDots} 點（約 48mm）`);
     }
-    const start = START_VARIANTS[variant] ?? START_VARIANTS[0];
     // 每張標籤重來一次。診斷要的是「這一張為什麼不對」，接在一起反而找不到。
     diag.t0 = Date.now();
     diag.lines = [
@@ -332,7 +319,6 @@ const NiimbotB21 = {
       `時間：${new Date().toLocaleString('zh-TW')}`,
       `瀏覽器：${navigator.userAgent}`,
       `標籤：${canvas.width} × ${canvas.height} 點，濃度 ${density}`,
-      `啟動指令組合：${start.name}`,
     ];
     await this.connect();
 
@@ -351,12 +337,10 @@ const NiimbotB21 = {
 
     await command(CMD.SetDensity, [density]);
     await command(CMD.SetLabelType, [LABEL_TYPE_WITH_GAPS]);
-    await command(CMD.PrintStart, start.startQty ? [...u16(1), 0, 0, 0] : [1]);
+    await command(CMD.PrintStart);
 
     await command(CMD.PageStart);
-    await command(CMD.SetPageSize, start.sizeQty
-      ? [...u16(image.rows), ...u16(image.cols), ...u16(1)]
-      : [...u16(image.rows), ...u16(image.cols)]);
+    await command(CMD.SetPageSize, [...u16(image.rows), ...u16(image.cols)]);
     for (const packet of rowPackets) await writePacket(packet);             // 點陣列不會有回應
     const pageEndAt = Date.now();
     await command(CMD.PageEnd, [1], 10000);
