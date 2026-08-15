@@ -68,9 +68,11 @@ function renderCode39Label(text, cols, rows, shelf = '') {
   if (barsWidth > cols) {
     throw new Error(`編號 ${label} 的條碼需要 ${barsWidth} 點，比標籤可印寬度 ${cols} 點還寬`);
   }
-  const textHeight = 28;                                    // 約 3.5mm，老師肉眼讀得到就夠
-  const shelfHeight = shelf ? textHeight : 0;
-  const barsHeight = rows - textHeight - shelfHeight - 12;
+  // 櫃位是老師掃完書之後唯一要看的資訊，維持大字；編號只有在條碼掃不出來時才會有人
+  // 去念它，所以縮小，把省下來的高度讓給條碼——條碼愈高愈好掃。
+  const shelfHeight = shelf ? 28 : 0;                       // 約 3.5mm
+  const numberHeight = 20;                                  // 約 2.5mm
+  const barsHeight = rows - numberHeight - shelfHeight - 12;
   if (barsHeight < 40) {
     throw new Error(`標籤只有 ${rows} 點高，${shelf ? '加上櫃位之後' : ''}`
       + '條碼會矮到掃不出來。請到設定頁把貼紙高度調大一點。');
@@ -108,7 +110,7 @@ function renderCode39Label(text, cols, rows, shelf = '') {
     x += NARROW;
   }
 
-  ctx.font = `bold ${textHeight}px monospace`;
+  ctx.font = `bold ${numberHeight}px monospace`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';
   ctx.fillText(label, cols / 2, rows - 4);
