@@ -50,6 +50,8 @@ th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--border)
 
 /* 標籤機診斷紀錄：剪貼簿被瀏覽器擋掉時，讓使用者自己 Ctrl+C 帶回來 */
 .diag-log { font-family: monospace; font-size: 12px; margin-top: 8px; }
+/* 送去標籤機的點陣圖預覽。底一定要白：黑點畫在深色底上就看不出對錯了。 */
+.label-preview { margin-top: 8px; background: #fff; border: 1px solid var(--border); }
 
 #toast { position: fixed; right: 16px; bottom: 16px; display: flex;
   flex-direction: column; gap: 8px; z-index: 50; }

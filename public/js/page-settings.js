@@ -107,12 +107,15 @@ document.getElementById('saveLabel').addEventListener('click', async (e) => {
 });
 
 /**
- * 測試標籤：上面一條 3 點寬的細線，下面一塊整片黑。
+ * 測試標籤：最上面一條整片黑的橫帶，下面是一把以 mm 為單位的尺。
  *
- * 這兩塊會走不同的指令——細線那幾列黑點只有 3 個，走座標指令（封包 19 bytes）；
- * 整片黑走整列點陣（50mm 貼紙是 61 bytes）。所以印出來的結果本身就是診斷：
- * 兩塊都有代表傳輸沒問題，只有其中一塊代表另一種封包沒生效。
- * 印一張真的條碼標籤全白時，分不出是圖沒畫出來還是封包沒送到。
+ * 兩種圖案同時也是傳輸診斷：橫帶走整列點陣（50mm 貼紙是 61 bytes），
+ * 刻度線那幾列黑點很少、走座標指令（封包 19 bytes）。只出現其中一種，
+ * 就代表另一種封包沒生效——印一張真的條碼標籤全白時分不出這件事。
+ *
+ * 尺是為了量「內容整體往下偏多少」：機器不會回報紙走到哪，只能讓紙自己說。
+ * 黑帶頂端就是圖的第 0mm，使用者只要回報「貼紙下緣的裁切線壓在哪個數字上」，
+ * 偏移量就是貼紙高度減掉那個數字，不必自己拿尺量。
  */
 function testLabelCanvas(cols, rows) {
   const canvas = document.createElement('canvas');
@@ -122,8 +125,19 @@ function testLabelCanvas(cols, rows) {
   ctx.fillStyle = '#fff';                                  // 透明會被當成全黑
   ctx.fillRect(0, 0, cols, rows);
   ctx.fillStyle = '#000';
-  ctx.fillRect(Math.floor(cols / 2) - 1, 0, 3, Math.floor(rows / 3));
-  ctx.fillRect(0, Math.floor((rows * 2) / 3), cols, Math.floor(rows / 3));
+
+  const mm = NiimbotB21.mmToDots(1);
+  ctx.fillRect(0, 0, cols, Math.round(mm * 1.5));          // 圖的起點，整片黑
+
+  ctx.font = `bold ${Math.round(mm * 3)}px sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  for (let n = 2; n * mm < rows; n += 2) {
+    const y = Math.round(n * mm);
+    const long = n % 10 === 0;
+    ctx.fillRect(0, y, long ? Math.round(mm * 5) : Math.round(mm * 2), 3);
+    if (long) ctx.fillText(String(n), Math.round(mm * 6), y);
+  }
   return canvas;
 }
 
@@ -168,11 +182,19 @@ document.getElementById('b21Test').addEventListener('click', async (e) => {
     return showToast('請先填好貼紙的寬與高，再按測試', 'error');
   }
 
+  // 先把要送出去的圖畫在畫面上。看不到紙的時候（例如遠端連過來），
+  // 這是唯一能分辨「圖畫錯了」與「機器沒印對」的方法。
+  const canvas = testLabelCanvas(cols, rows);
+  canvas.className = 'label-preview';
+  const preview = document.getElementById('b21Preview');
+  preview.textContent = '';
+  preview.appendChild(canvas);
+
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> 列印中…';
   let failure = null;
   try {
-    await NiimbotB21.printCanvas(testLabelCanvas(cols, rows));
+    await NiimbotB21.printCanvas(canvas);
   } catch (err) {
     // 使用者按了「取消」不是故障，講成失敗會讓他以為機器壞了。
     failure = err.name === 'NotFoundError' ? '沒有選擇標籤機' : err.message;
