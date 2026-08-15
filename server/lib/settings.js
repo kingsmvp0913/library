@@ -46,8 +46,10 @@ function getLabelSettings() {
   const cfg = readConfig();
   return {
     printer: cfg.LABEL_PRINTER === 'b21' ? 'b21' : 'a4',
-    widthMm: Number(cfg.LABEL_WIDTH_MM) || 50,
-    heightMm: Number(cfg.LABEL_HEIGHT_MM) || 30,
+    // 40×20 是 B21S 出廠附的那捲。實機驗過：填錯高度不會報錯，機器會進位吃掉兩張
+    // 貼紙，內容跨過裁切線，看起來像「印歪了」甚至「整張空白」。
+    widthMm: Number(cfg.LABEL_WIDTH_MM) || 40,
+    heightMm: Number(cfg.LABEL_HEIGHT_MM) || 20,
   };
 }
 

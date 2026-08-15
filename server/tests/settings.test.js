@@ -105,8 +105,8 @@ describe('編號標籤輸出設定', () => {
     const { app } = await setup({});
     const res = await request(app).get('/api/settings').expect(200);
     expect(res.body.labelPrinter).toBe('a4');
-    expect(res.body.labelWidthMm).toBe(50);
-    expect(res.body.labelHeightMm).toBe(30);
+    expect(res.body.labelWidthMm).toBe(40);
+    expect(res.body.labelHeightMm).toBe(20);
   });
 
   test('選了 B21 與貼紙尺寸會寫回設定檔', async () => {
