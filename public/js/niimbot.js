@@ -282,7 +282,17 @@ const NiimbotB21 = {
       conn.device.addEventListener('gattserverdisconnected', () => { conn.channel = null; });
     }
 
-    const gatt = await conn.device.gatt.connect();
+    let gatt;
+    try {
+      gatt = await conn.device.gatt.connect();
+    } catch (err) {
+      // 連不上的裝置留著只會讓下一次重試繼續對著同一個死掉的物件連，而且不會再跳選擇
+      // 視窗——使用者會看到「我明明選了機器」卻一直失敗。丟掉它，下次重新選。
+      conn.device = null;
+      note(`連線失敗：${err.message}`);
+      throw new Error('連不上標籤機。請確認機器電源是開的（會自動關機）、'
+        + '沒有被手機的官方 App 佔用，再按一次列印。');
+    }
     const channel = await findChannel(gatt);
     if (!channel) {
       gatt.disconnect();
