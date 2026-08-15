@@ -19,6 +19,19 @@ const CODE39 = {
 // 靜區只有 2mm 時右側曾經只剩 0.7mm，掃碼槍會找不到條碼的頭尾。
 const NARROW = 2, WIDE = 4, HEIGHT = 60;
 
+/**
+ * 印字頭的第 0 點沒有對齊貼紙左緣，而是落在貼紙裡面約 1.5mm（12 點）。
+ * 所以貼紙最左邊那 12 點印不到，而點陣圖最右邊那 12 點會被擠出紙外。
+ *
+ * 這不是推論出來的：舊版條碼 288 點置中時，這個模型預測左留白 3.5mm、右留白 0.5mm，
+ * 實機量到的是 3.3–4.0mm 與 0.7mm。不補正就是右邊靜區幾乎歸零，掃碼槍找不到頭尾。
+ *
+ * ⚠️ 這個值屬於「這一台 B21S ＋ 目前導紙夾的位置」。換機器、或有人動過導紙夾，
+ * 就要重印一張滿版黑帶的測試標籤重新量，不要沿用。刻意不做成設定欄位——多一個
+ * 沒人看得懂的選項，比偶爾改一次程式更糟。
+ */
+const PAPER_OFFSET = 12;
+
 /** 產生 Code39 條碼 SVG。text 會轉大寫；不支援的字元會拋錯。 */
 function renderCode39(text) {
   const chars = ('*' + String(text).toUpperCase() + '*').split('');
@@ -69,8 +82,11 @@ function code39DotWidth(text) {
 function renderCode39Label(text, cols, rows, shelf = '') {
   const label = String(text).toUpperCase();
   const barsWidth = code39DotWidth(label);
-  if (barsWidth > cols) {
-    throw new Error(`編號 ${label} 的條碼需要 ${barsWidth} 點，比標籤可印寬度 ${cols} 點還寬`);
+  // 內容要對齊「貼紙的中線」，而貼紙中線在點陣圖上是 cols/2 - PAPER_OFFSET。
+  // 左邊印不到第 0 點以左，所以能置中又不被截掉的最大寬度是 cols - 2×PAPER_OFFSET。
+  const usableCols = cols - 2 * PAPER_OFFSET;
+  if (barsWidth > usableCols) {
+    throw new Error(`編號 ${label} 的條碼需要 ${barsWidth} 點，比標籤印得到的 ${usableCols} 點還寬`);
   }
   // 櫃位是老師掃完書之後唯一要看的資訊，維持大字；編號只有在條碼掃不出來時才會有人
   // 去念它，所以縮小，把省下來的高度讓給條碼——條碼愈高愈好掃。
@@ -93,16 +109,19 @@ function renderCode39Label(text, cols, rows, shelf = '') {
 
   ctx.fillStyle = '#000';
 
+  // 貼紙的中心不在點陣圖的中心——印字頭的第 0 點落在貼紙裡面，見 PAPER_OFFSET。
+  const middle = cols / 2 - PAPER_OFFSET;
+
   if (shelf) {
     // 第四個參數是最大寬度：櫃位名稱是使用者自己取的，太長時讓它壓扁，不要靜默切掉。
     ctx.font = `bold ${shelfHeight}px sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText(shelf, cols / 2, 4, cols - 8);
+    ctx.fillText(shelf, middle, 4, usableCols - 8);
   }
 
   const barsTop = 4 + shelfHeight;
-  let x = Math.floor((cols - barsWidth) / 2);
+  let x = Math.floor(middle - barsWidth / 2);
   for (const ch of ('*' + label + '*').split('')) {
     const pattern = CODE39[ch];
     if (!pattern) throw new Error(`條碼不支援這個字元：${ch}`);
@@ -117,7 +136,7 @@ function renderCode39Label(text, cols, rows, shelf = '') {
   ctx.font = `bold ${numberHeight}px monospace`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';
-  ctx.fillText(label, cols / 2, rows - 4);
+  ctx.fillText(label, middle, rows - 4);
   return canvas;
 }
 

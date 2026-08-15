@@ -48,6 +48,7 @@ describe('Code39 編碼表', () => {
 // 真正的限制不是印字頭的 384 點，是貼紙的 320 點（40mm）——印字頭比貼紙寬。
 describe('條碼在標籤機上的寬度', () => {
   const LABEL_DOTS = 320;                 // 40mm 貼紙
+  const PAPER_OFFSET = 12;                // 印字頭第 0 點落在貼紙裡面 1.5mm，見 barcode.js
   const QUIET_ZONE = 10 * 2;              // Code39 規定的靜區＝10 倍窄條
 
   test('本專案的編號印得進 40mm 貼紙', () => {
@@ -55,12 +56,12 @@ describe('條碼在標籤機上的寬度', () => {
     expect(code39DotWidth('T-999999')).toBe(258);
   });
 
-  // 掃碼槍靠條碼兩側的空白判斷頭尾，沒有靜區就掃不出來。實機量到紙在機器裡左右
-  // 會晃約 2mm（16 點），所以名目靜區必須比規定值再寬出這段餘裕。
-  test('條碼兩側留得下靜區，而且還吃得起紙左右晃 2mm', () => {
-    const margin = (LABEL_DOTS - code39DotWidth('B-000001')) / 2;
+  // 掃碼槍靠條碼兩側的空白判斷頭尾，沒有靜區就掃不出來。而條碼是對齊貼紙中線畫的，
+  // 不是對齊點陣圖中線——所以能用的寬度要先扣掉印字頭蓋不到的那一段。
+  test('條碼對齊貼紙中線之後，兩側都留得下靜區', () => {
+    const usable = LABEL_DOTS - 2 * PAPER_OFFSET;
+    const margin = (usable - code39DotWidth('B-000001')) / 2 + PAPER_OFFSET;
     expect(margin).toBeGreaterThanOrEqual(QUIET_ZONE);
-    expect(margin).toBeGreaterThan(QUIET_ZONE + 8);
   });
 
   test('編號多一位就多 26 點——哪天流水號進位要重新確認印不印得下', () => {
