@@ -13,7 +13,11 @@ const CODE39 = {
   '/': 'nwnwnnnwn', '+': 'nwnnnwnwn', '%': 'nnnwnwnwn', '*': 'nwnnwnwnn',
 };
 
-const NARROW = 2, WIDE = 5, HEIGHT = 60;
+// 窄條 2 點是 203dpi 印得出來的下限，再細會糊掉，所以只能動寬條。
+// 寬窄比從 2.5:1 收到 2:1（Code39 規定的下限，掃碼槍普遍支援），條碼從 288 點縮到
+// 258 點——省下的 30 點全部變成兩側的靜區。實機量到紙在機器裡左右會晃約 2mm，
+// 靜區只有 2mm 時右側曾經只剩 0.7mm，掃碼槍會找不到條碼的頭尾。
+const NARROW = 2, WIDE = 4, HEIGHT = 60;
 
 /** 產生 Code39 條碼 SVG。text 會轉大寫；不支援的字元會拋錯。 */
 function renderCode39(text) {

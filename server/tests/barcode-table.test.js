@@ -44,15 +44,26 @@ describe('Code39 編碼表', () => {
   });
 });
 
-// 熱感標籤機的印字頭只有 384 點寬（48mm）。條碼比它寬就會被截掉一段，
-// 而截掉的條碼看起來仍然像條碼，只有拿掃碼槍掃才會發現。
+// 條碼太寬會被截掉，而截掉的條碼看起來仍然像條碼，只有拿掃碼槍掃才會發現。
+// 真正的限制不是印字頭的 384 點，是貼紙的 320 點（40mm）——印字頭比貼紙寬。
 describe('條碼在標籤機上的寬度', () => {
-  test('本專案的編號印得進 B21 的 384 點', () => {
-    expect(code39DotWidth('B-000001')).toBe(288);
-    expect(code39DotWidth('T-999999')).toBe(288);
+  const LABEL_DOTS = 320;                 // 40mm 貼紙
+  const QUIET_ZONE = 10 * 2;              // Code39 規定的靜區＝10 倍窄條
+
+  test('本專案的編號印得進 40mm 貼紙', () => {
+    expect(code39DotWidth('B-000001')).toBe(258);
+    expect(code39DotWidth('T-999999')).toBe(258);
   });
 
-  test('編號多一位就多 29 點——哪天流水號進位要重新確認印不印得下', () => {
-    expect(code39DotWidth('B-0000001') - code39DotWidth('B-000001')).toBe(29);
+  // 掃碼槍靠條碼兩側的空白判斷頭尾，沒有靜區就掃不出來。實機量到紙在機器裡左右
+  // 會晃約 2mm（16 點），所以名目靜區必須比規定值再寬出這段餘裕。
+  test('條碼兩側留得下靜區，而且還吃得起紙左右晃 2mm', () => {
+    const margin = (LABEL_DOTS - code39DotWidth('B-000001')) / 2;
+    expect(margin).toBeGreaterThanOrEqual(QUIET_ZONE);
+    expect(margin).toBeGreaterThan(QUIET_ZONE + 8);
+  });
+
+  test('編號多一位就多 26 點——哪天流水號進位要重新確認印不印得下', () => {
+    expect(code39DotWidth('B-0000001') - code39DotWidth('B-000001')).toBe(26);
   });
 });
