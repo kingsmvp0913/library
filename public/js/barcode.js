@@ -89,13 +89,17 @@ function renderCode39Label(text, cols, rows, shelf = '') {
     throw new Error(`編號 ${label} 的條碼需要 ${barsWidth} 點，比標籤印得到的 ${usableCols} 點還寬`);
   }
   // 櫃位是老師掃完書之後唯一要看的資訊，維持大字；編號只有在條碼掃不出來時才會有人
-  // 去念它，所以縮小，把省下來的高度讓給條碼——條碼愈高愈好掃。
-  const shelfHeight = shelf ? 28 : 0;                       // 約 3.5mm
+  // 去念它，所以縮小。
+  //
+  // 櫃位那一行的高度「一律保留」，沒填櫃位就留白，不要把空間讓給條碼——每張標籤的
+  // 條碼一樣高，貼在書背上才看得出是同一套；而且沒指定櫃位只是資料還沒補完，
+  // 不是把版面撐大的理由。
+  const shelfHeight = 28;                                   // 約 3.5mm
   const numberHeight = 20;                                  // 約 2.5mm
   const barsHeight = rows - numberHeight - shelfHeight - 12;
   if (barsHeight < 40) {
-    throw new Error(`標籤只有 ${rows} 點高，${shelf ? '加上櫃位之後' : ''}`
-      + '條碼會矮到掃不出來。請到設定頁把貼紙高度調大一點。');
+    throw new Error(`標籤只有 ${rows} 點高，條碼會矮到掃不出來。`
+      + '請到設定頁把貼紙高度調大一點。');
   }
 
   const canvas = document.createElement('canvas');
