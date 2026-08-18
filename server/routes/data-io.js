@@ -100,26 +100,26 @@ router.get('/export/loans.csv', async (req, res, next) => {
  * 標籤機 App 的「Excel 匯入」用的檔案。
  *
  * 為什麼是 .xlsx 不是 CSV：那個匯入功能只吃 Excel 檔。
- * 為什麼只有三欄：這個檔不是拿來對帳的，是拿去餵標籤模板的——匯入之後要在 App 裡
- * 把欄位拖到條碼元件上，多一欄就多一次拖錯的機會。
- * 條碼不用我們畫：App 的條碼元件會把「編號」那一欄自己轉成條碼，
+ * 為什麼是這三欄、而且照這個順序：它們一一對應標籤上由上而下的三個元件
+ * （櫃位、條碼、條碼底下的文字）。這個檔不是拿來對帳的，是拿去餵標籤模板的——
+ * 書名之類的欄位在 App 裡只會變成拖錯欄位的機會，所以不放。
+ * 條碼不用我們畫：App 的條碼元件會把「條碼」那一欄自己轉成條碼，
  * 掃碼槍認的是條碼解出來的字串，只要那一欄是 copies.barcode 就對得上。
  */
-const LABEL_HEADERS = ['編號', '櫃位', '書名'];
+const LABEL_HEADERS = ['櫃位', '條碼', '條碼文字'];
 
 async function labelRows(titleIds) {
   const { label } = await shelfNameMap();
-  const [copies, titles] = await Promise.all([
-    db.query('SELECT * FROM copies ORDER BY barcode'),
-    db.query('SELECT * FROM titles'),
-  ]);
-  const titleById = new Map(titles.rows.map((r) => [r.id, r]));
+  const { rows: copies } = await db.query('SELECT * FROM copies ORDER BY barcode');
   // 整批撈回來再用 JS 篩，不寫成 SQL 的 IN／ANY：館藏規模是幾百到幾千冊，
   // 差別可以忽略，而 titles.csv 也是這樣做的。
   const wanted = titleIds && new Set(titleIds);
-  return copies.rows
+  return copies
     .filter((c) => !wanted || wanted.has(c.title_id))
-    .map((c) => [c.barcode, label(c.shelf_id), titleById.get(c.title_id)?.title ?? '']);
+    // 「條碼」與「條碼文字」是同一個值：一欄餵 App 的條碼元件（它自己轉成條碼），
+    // 另一欄餵條碼底下那個文字元件。App 是靠「哪一欄拖到哪個元件」對應的，
+    // 一個值要餵兩個元件就得出現兩次。
+    .map((c) => [label(c.shelf_id), c.barcode, c.barcode]);
 }
 
 function sendLabelXlsx(res, rows) {

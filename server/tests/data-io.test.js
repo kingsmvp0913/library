@@ -81,7 +81,7 @@ describe('標籤 Excel 匯出', () => {
     return { ...ctx, aId: a.body.title.id, bId: b.body.title.id };
   }
 
-  test('全部匯出：每一冊一列，含編號與櫃位', async () => {
+  test('全部匯出：每一冊一列，含櫃位與條碼', async () => {
     const { app } = await twoTitles();
     const res = await request(app).get('/api/export/labels.xlsx')
       .responseType('blob').expect(200);
@@ -92,15 +92,32 @@ describe('標籤 Excel 匯出', () => {
     expect(text).toContain('A櫃');
   });
 
+  // 欄位順序對應標籤由上而下的三個元件，順序錯了使用者會把櫃位拖到條碼上。
+  test('欄位是櫃位／條碼／條碼文字，書名不進這個檔', async () => {
+    const { app } = await twoTitles();
+    const res = await request(app).get('/api/export/labels.xlsx')
+      .responseType('blob').expect(200);
+    const text = res.body.toString('utf8');
+    for (const head of ['櫃位', '條碼', '條碼文字']) expect(text).toContain(head);
+    expect(text).not.toContain('毛毛蟲');
+    // 條碼與條碼文字是同一個值，各出現一次；sharedStrings 共用同一筆，
+    // 所以驗的是「工作表上引用了兩次」，而不是字串存了兩份。
+    const sheet = /<sheetData>.*?<\/sheetData>/s.exec(text)[0];
+    const firstRow = /<row r="2">.*?<\/row>/s.exec(sheet)[0];
+    const ids = [...firstRow.matchAll(/<v>(\d+)<\/v>/g)].map((m) => m[1]);
+    expect(ids).toHaveLength(3);
+    expect(ids[1]).toBe(ids[2]);          // 條碼 與 條碼文字 指到同一個字串
+    expect(ids[0]).not.toBe(ids[1]);      // 櫃位 不是
+  });
+
   test('只匯出勾選的那本，其他冊不可以混進來', async () => {
     const { app, bId } = await twoTitles();
     const res = await request(app).post('/api/export/labels.xlsx')
       .send({ titleIds: [bId] }).responseType('blob').expect(200);
     const text = res.body.toString('utf8');
-    expect(text).toContain('小王子');
-    expect(text).not.toContain('毛毛蟲');
     expect(text).toContain('B-000003');
     expect(text).not.toContain('B-000001');
+    expect(text).not.toContain('B-000002');
   });
 
   // 空檔案匯進 App 只會顯示「沒有資料」，使用者無從得知是哪一步錯了。
