@@ -3,6 +3,7 @@ const path = require('path');
 const express = require('express');
 const db = require('../db.js');
 const { toCsv, parseCsv } = require('../lib/csv.js');
+const { toXlsx } = require('../lib/xlsx.js');
 const { nextBarcode } = require('../lib/barcode-no.js');
 const { mapRows, COVER_MIN_BYTES } = require('../lib/bookbuddy.js');
 const { saveCoverFromUrl } = require('../lib/cover.js');
@@ -92,6 +93,59 @@ router.get('/export/loans.csv', async (req, res, next) => {
     sendCsv(res, 'loans.csv', toCsv(
       ['編號', '書名', '借閱人', '班級', '借出時間', '歸還時間'], rows
     ));
+  } catch (err) { next(err); }
+});
+
+/**
+ * 標籤機 App 的「Excel 匯入」用的檔案。
+ *
+ * 為什麼是 .xlsx 不是 CSV：那個匯入功能只吃 Excel 檔。
+ * 為什麼只有三欄：這個檔不是拿來對帳的，是拿去餵標籤模板的——匯入之後要在 App 裡
+ * 把欄位拖到條碼元件上，多一欄就多一次拖錯的機會。
+ * 條碼不用我們畫：App 的條碼元件會把「編號」那一欄自己轉成條碼，
+ * 掃碼槍認的是條碼解出來的字串，只要那一欄是 copies.barcode 就對得上。
+ */
+const LABEL_HEADERS = ['編號', '櫃位', '書名'];
+
+async function labelRows(titleIds) {
+  const { label } = await shelfNameMap();
+  const [copies, titles] = await Promise.all([
+    db.query('SELECT * FROM copies ORDER BY barcode'),
+    db.query('SELECT * FROM titles'),
+  ]);
+  const titleById = new Map(titles.rows.map((r) => [r.id, r]));
+  // 整批撈回來再用 JS 篩，不寫成 SQL 的 IN／ANY：館藏規模是幾百到幾千冊，
+  // 差別可以忽略，而 titles.csv 也是這樣做的。
+  const wanted = titleIds && new Set(titleIds);
+  return copies.rows
+    .filter((c) => !wanted || wanted.has(c.title_id))
+    .map((c) => [c.barcode, label(c.shelf_id), titleById.get(c.title_id)?.title ?? '']);
+}
+
+function sendLabelXlsx(res, rows) {
+  if (!rows.length) {
+    // 空檔案匯進 App 只會得到「沒有資料」，使用者不會知道是哪一步錯了。
+    return res.status(400).json({ error: '這裡面還沒有任何一冊，沒有標籤可以印。請先到館藏頁新增冊數。' });
+  }
+  res.setHeader('Content-Type',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment; filename="labels.xlsx"');
+  res.send(toXlsx(LABEL_HEADERS, rows, '標籤'));
+}
+
+router.get('/export/labels.xlsx', async (req, res, next) => {
+  try {
+    sendLabelXlsx(res, await labelRows(null));
+  } catch (err) { next(err); }
+});
+
+// 選取的那幾本走 POST：勾一整頁的書時 id 會多到塞不進網址列。
+router.post('/export/labels.xlsx', async (req, res, next) => {
+  try {
+    const ids = (Array.isArray(req.body?.titleIds) ? req.body.titleIds : [])
+      .map(Number).filter(Number.isInteger);
+    if (!ids.length) return res.status(400).json({ error: '請先勾選要印標籤的書' });
+    sendLabelXlsx(res, await labelRows(ids));
   } catch (err) { next(err); }
 });
 

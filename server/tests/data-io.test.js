@@ -62,6 +62,68 @@ describe('匯出 CSV', () => {
   });
 });
 
+/**
+ * 標籤機 App 的「Excel 匯入」用的檔。內容能不能被那支 App 讀，只有實機能定案；
+ * 這裡驗的是「哪幾冊會進到檔案裡」——挑錯冊數是會浪費一整捲貼紙的錯。
+ *
+ * 檔案是 stored（不壓縮）的 zip，所以裡面的 XML 直接就是可讀的位元組，
+ * 不必在這裡再拆一次（zip 結構本身由 xlsx.test.js 覆蓋）。
+ */
+describe('標籤 Excel 匯出', () => {
+  async function twoTitles() {
+    const ctx = await setup();
+    const a = await request(ctx.app).post('/api/titles').send({
+      title: '毛毛蟲', category_id: ctx.bookCat.id, copies: 2, shelf_id: ctx.shelfId,
+    });
+    const b = await request(ctx.app).post('/api/titles').send({
+      title: '小王子', category_id: ctx.bookCat.id, copies: 1,
+    });
+    return { ...ctx, aId: a.body.title.id, bId: b.body.title.id };
+  }
+
+  test('全部匯出：每一冊一列，含編號與櫃位', async () => {
+    const { app } = await twoTitles();
+    const res = await request(app).get('/api/export/labels.xlsx')
+      .responseType('blob').expect(200);
+    expect(res.headers['content-disposition']).toContain('.xlsx');
+    const text = res.body.toString('utf8');
+    expect(text.slice(0, 2)).toBe('PK');
+    for (const no of ['B-000001', 'B-000002', 'B-000003']) expect(text).toContain(no);
+    expect(text).toContain('A櫃');
+  });
+
+  test('只匯出勾選的那本，其他冊不可以混進來', async () => {
+    const { app, bId } = await twoTitles();
+    const res = await request(app).post('/api/export/labels.xlsx')
+      .send({ titleIds: [bId] }).responseType('blob').expect(200);
+    const text = res.body.toString('utf8');
+    expect(text).toContain('小王子');
+    expect(text).not.toContain('毛毛蟲');
+    expect(text).toContain('B-000003');
+    expect(text).not.toContain('B-000001');
+  });
+
+  // 空檔案匯進 App 只會顯示「沒有資料」，使用者無從得知是哪一步錯了。
+  test('沒勾任何一本要擋下來，而不是給一個空檔', async () => {
+    const { app } = await twoTitles();
+    const res = await request(app).post('/api/export/labels.xlsx')
+      .send({ titleIds: [] }).expect(400);
+    expect(res.body.error).toMatch(/勾選/);
+  });
+
+  test('勾到的書底下沒有任何一冊，要講清楚下一步', async () => {
+    const { app, db, bookCat } = await setup();
+    // 走 API 建的書目一定至少有一冊（`Math.max(1, …)`），所以這條防線只能直接寫一列來測。
+    // 冊被刪光的書目在真實資料裡是存在的。
+    const { rows: [t] } = await db.query(
+      `INSERT INTO titles (title, category_id, source)
+       VALUES ('沒有冊的書', $1, 'manual') RETURNING id`, [bookCat.id]);
+    const res = await request(app).post('/api/export/labels.xlsx')
+      .send({ titleIds: [t.id] }).expect(400);
+    expect(res.body.error).toMatch(/新增冊數/);
+  });
+});
+
 describe('完整備份', () => {
   test('備份含所有資料表', async () => {
     const { app, bookCat } = await setup();

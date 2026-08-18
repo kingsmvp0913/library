@@ -31,6 +31,7 @@ async function loadList(q = '') {
   const rows = await Api.get('/api/titles' + (q ? `?q=${encodeURIComponent(q)}` : ''));
   document.getElementById('list').innerHTML = rows.length ? rows.map((t) => `
     <tr>
+      <td><input type="checkbox" class="pick" value="${t.id}"></td>
       <td>${coverCell(t.cover_path)}</td>
       <td>${esc(t.title)}</td>
       <td>${esc(t.authors ?? '')}</td>
@@ -38,9 +39,35 @@ async function loadList(q = '') {
       <td>${t.available_copies} / ${t.total_copies}</td>
       <td><button data-id="${t.id}" class="detail">明細</button></td>
     </tr>`).join('')
-    : '<tr><td colspan="6" class="muted">還沒有任何館藏</td></tr>';
+    : '<tr><td colspan="7" class="muted">還沒有任何館藏</td></tr>';
   document.querySelectorAll('.detail').forEach((b) =>
     b.addEventListener('click', () => showDetail(Number(b.dataset.id))));
+  // 重新載入清單之後勾選就沒了，全選框要跟著回到未勾，否則它的狀態會騙人。
+  document.getElementById('pickAll').checked = false;
+}
+
+/**
+ * 下載標籤機 App 要匯入的 Excel 檔。
+ *
+ * 不能走 Api.post——那支會把回應當 JSON 解析，而這裡回的是二進位檔。
+ * 用 POST 而不是把 id 串在網址上：勾一整頁的書時網址會爆長。
+ */
+async function downloadLabelXlsx(titleIds) {
+  const res = await fetch('/api/export/labels.xlsx', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ titleIds }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.error ?? `匯出失敗（${res.status}）`);
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'labels.xlsx';
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 /**
@@ -480,6 +507,25 @@ document.getElementById('addBook').addEventListener('click', showBookForm);
 document.getElementById('addToy').addEventListener('click', showToyForm);
 document.getElementById('filter').addEventListener('input',
   (e) => loadList(e.target.value.trim()));
+
+document.getElementById('pickAll').addEventListener('change', (e) => {
+  document.querySelectorAll('.pick').forEach((box) => { box.checked = e.target.checked; });
+});
+
+document.getElementById('exportLabels').addEventListener('click', async (e) => {
+  const ids = [...document.querySelectorAll('.pick:checked')].map((box) => Number(box.value));
+  if (!ids.length) return showToast('請先勾選要印標籤的書', 'error');
+  const btn = e.target;
+  btn.disabled = true;
+  try {
+    await downloadLabelXlsx(ids);
+    showToast(`已匯出 ${ids.length} 本書的標籤檔，每一冊一列`);
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+});
 createOmniSearch(document.getElementById('omni'), document.getElementById('omniPanel'));
 
 loadRefs().then(() => {

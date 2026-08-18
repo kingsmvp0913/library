@@ -28,11 +28,12 @@
         <button class="primary" id="addBook">📕 新增圖書（掃 ISBN）</button>
         <button id="addToy">🧩 新增教具（手動）</button>
         <input id="filter" placeholder="篩選書名／作者／ISBN" style="max-width:280px">
+        <button id="exportLabels">🏷️ 匯出勾選的標籤檔</button>
       </div>
     </div>
     <div id="form"></div>
     <div class="card"><table>
-      <thead><tr><th>封面</th><th>書名</th><th>作者</th><th>類型</th><th>在架／總數</th><th></th></tr></thead>
+      <thead><tr><th><input type="checkbox" id="pickAll" title="全選"></th><th>封面</th><th>書名</th><th>作者</th><th>類型</th><th>在架／總數</th><th></th></tr></thead>
       <tbody id="list"></tbody>
     </table></div>
   </main>
