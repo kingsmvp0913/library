@@ -92,22 +92,19 @@ describe('標籤 Excel 匯出', () => {
     expect(text).toContain('A櫃');
   });
 
-  // 欄位順序對應標籤由上而下的三個元件，順序錯了使用者會把櫃位拖到條碼上。
-  test('欄位是櫃位／條碼／條碼文字，書名不進這個檔', async () => {
+  // 欄位順序對應標籤由上而下的兩個元件，順序錯了使用者會把櫃位拖到條碼上。
+  test('只有櫃位與條碼兩欄，書名不進這個檔', async () => {
     const { app } = await twoTitles();
     const res = await request(app).get('/api/export/labels.xlsx')
       .responseType('blob').expect(200);
     const text = res.body.toString('utf8');
-    for (const head of ['櫃位', '條碼', '條碼文字']) expect(text).toContain(head);
+    expect(text).toContain('櫃位');
+    expect(text).toContain('條碼');
     expect(text).not.toContain('毛毛蟲');
-    // 條碼與條碼文字是同一個值，各出現一次；sharedStrings 共用同一筆，
-    // 所以驗的是「工作表上引用了兩次」，而不是字串存了兩份。
-    const sheet = /<sheetData>.*?<\/sheetData>/s.exec(text)[0];
-    const firstRow = /<row r="2">.*?<\/row>/s.exec(sheet)[0];
-    const ids = [...firstRow.matchAll(/<v>(\d+)<\/v>/g)].map((m) => m[1]);
-    expect(ids).toHaveLength(3);
-    expect(ids[1]).toBe(ids[2]);          // 條碼 與 條碼文字 指到同一個字串
-    expect(ids[0]).not.toBe(ids[1]);      // 櫃位 不是
+    // 每一列就是兩格，多出來的欄位會讓 App 的欄位清單對不上使用者看到的說明。
+    const firstRow = /<row r="2">.*?<\/row>/s.exec(text)[0];
+    expect([...firstRow.matchAll(/<c /g)]).toHaveLength(2);
+    expect(text).toContain('ref="A1:B4"');            // 標頭 + 3 冊
   });
 
   test('只匯出勾選的那本，其他冊不可以混進來', async () => {
