@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db.js');
 const { shelfLabelOf } = require('../lib/shelf-label.js');
+const { canonicalBarcode } = require('../lib/barcode-no.js');
 
 const router = express.Router();
 
@@ -8,7 +9,7 @@ async function findCopy(barcode) {
   const { rows } = await db.query(
     `SELECT cp.*, t.title, t.authors, t.cover_path, t.isbn13
        FROM copies cp JOIN titles t ON t.id = cp.title_id
-      WHERE cp.barcode = $1`, [String(barcode ?? '').trim()]
+      WHERE cp.barcode = $1`, [canonicalBarcode(barcode)]
   );
   return rows[0] ?? null;
 }

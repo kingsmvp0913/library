@@ -44,6 +44,16 @@ describe('POST /api/scan', () => {
     expect(res.body.borrower.name).toBe('小明');
   });
 
+  // 掃碼槍會把編號中間的 `-` 吃掉（鍵盤配置／輸入法）。編號印在書上不能改，
+  // 少橫槓的形式一定要查得到，否則整批已貼標籤的書都掃不動。
+  test('少了中間橫槓的編號一樣查得到', async () => {
+    const { app, barcode } = await setup();
+    const res = await request(app).post('/api/scan')
+      .send({ barcode: barcode.replace('-', '') }).expect(200);
+    expect(res.body.copy.barcode).toBe(barcode);
+    expect(res.body.action).toBe('borrow');
+  });
+
   test('查無此編號回 404 與白話訊息', async () => {
     const { app } = await setup();
     const res = await request(app).post('/api/scan').send({ barcode: 'B-999999' }).expect(404);

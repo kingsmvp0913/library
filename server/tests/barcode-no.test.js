@@ -46,3 +46,23 @@ describe('nextBarcode', () => {
     await expect(nextBarcode('unknown')).rejects.toThrow();
   });
 });
+
+describe('canonicalBarcode', () => {
+  const { canonicalBarcode } = require('../lib/barcode-no.js');
+
+  test('補回掃碼槍吃掉的橫槓', () => {
+    expect(canonicalBarcode('B000001')).toBe('B-000001');
+    expect(canonicalBarcode('T000123')).toBe('T-000123');
+  });
+
+  test('已經正規的編號原樣通過', () => {
+    expect(canonicalBarcode('B-000001')).toBe('B-000001');
+  });
+
+  // ISBN、書名等其他掃碼／輸入不能被這層改掉。
+  test('不是編號格式的字串原樣退回', () => {
+    expect(canonicalBarcode('9789573317249')).toBe('9789573317249');
+    expect(canonicalBarcode('  好餓的毛毛蟲 ')).toBe('好餓的毛毛蟲');
+    expect(canonicalBarcode('X000001')).toBe('X000001');
+  });
+});
