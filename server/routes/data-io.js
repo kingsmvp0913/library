@@ -17,6 +17,15 @@ const { makeBackup, listBackups, TABLES, BACKUP_DIR } = require('../lib/backup.j
 const logger = require('../lib/logger.js');
 
 function sendCsv(res, filename, csv) {
+  if (res.req.path.endsWith('.xlsx')) {
+    const text = String(csv);
+    const headers = text.slice(text.startsWith('\uFEFF') ? 1 : 0).split(/\r?\n/, 1)[0].split(',');
+    const rows = parseCsv(text).map((row) => headers.map((header) => row[header] ?? ''));
+    res.setHeader('Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename.replace(/\.csv$/, '.xlsx')}"`);
+    return res.send(toXlsx(headers, rows, '匯出資料'));
+  }
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   res.send(csv);
@@ -36,7 +45,7 @@ async function shelfNameMap() {
 
 const STATUS_TEXT = { in: '在架', out: '借出中', lost: '遺失', repair: '修繕中' };
 
-router.get('/export/titles.csv', async (req, res, next) => {
+router.get(['/export/titles.csv', '/export/titles.xlsx'], async (req, res, next) => {
   try {
     const { label } = await shelfNameMap();
     const [copies, titles, cats] = await Promise.all([
@@ -60,7 +69,7 @@ router.get('/export/titles.csv', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.get('/export/borrowers.csv', async (req, res, next) => {
+router.get(['/export/borrowers.csv', '/export/borrowers.xlsx'], async (req, res, next) => {
   try {
     const { rows } = await db.query('SELECT * FROM borrowers ORDER BY name');
     sendCsv(res, 'borrowers.csv', toCsv(
@@ -70,7 +79,7 @@ router.get('/export/borrowers.csv', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.get('/export/loans.csv', async (req, res, next) => {
+router.get(['/export/loans.csv', '/export/loans.xlsx'], async (req, res, next) => {
   try {
     const [loans, copies, titles, borrowers] = await Promise.all([
       db.query('SELECT * FROM loans ORDER BY borrowed_at DESC, id DESC'),

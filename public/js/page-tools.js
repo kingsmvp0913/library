@@ -252,3 +252,9 @@ paintFileList('logList', '/api/logs', '/api/logs',
   '目前沒有任何紀錄。', logLabel);
 
 createOmniSearch(document.getElementById('omni'), document.getElementById('omniPanel'));
+
+// 對帳用的三份清單改由 Excel 匯出；匯入範本仍維持 CSV，供既有匯入流程使用。
+for (const name of ['titles', 'borrowers', 'loans']) {
+  const link = document.querySelector(`a[href="/api/export/${name}.csv"]`);
+  if (link) link.href = `/api/export/${name}.xlsx`;
+}

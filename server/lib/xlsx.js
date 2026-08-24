@@ -10,6 +10,9 @@
 
 /** 全部值一律當文字。編號 B-000001 這種被對方當成數字或日期就毀了。 */
 const CELL_TYPE_SHARED_STRING = 's';
+// Excel 內建格式 49 = Text。除了 t="s"，也明確設定顯示格式，
+// 讓開檔後欄位的「數字格式」不是 General，長數字不會變科學記號。
+const TEXT_STYLE_INDEX = 1;
 
 const CRC_TABLE = (() => {
   const table = new Int32Array(256);
@@ -147,7 +150,7 @@ function toXlsx(headers, rows, sheetName = '工作表1') {
 
   const sheetRows = table.map((row, r) => {
     const cells = row.map((value, c) =>
-      `<c r="${colName(c)}${r + 1}" t="${CELL_TYPE_SHARED_STRING}"><v>${idFor(value)}</v></c>`
+      `<c r="${colName(c)}${r + 1}" s="${TEXT_STYLE_INDEX}" t="${CELL_TYPE_SHARED_STRING}"><v>${idFor(value)}</v></c>`
     ).join('');
     return `<row r="${r + 1}">${cells}</row>`;
   }).join('');
@@ -170,7 +173,18 @@ function toXlsx(headers, rows, sheetName = '工作表1') {
   const workbookRels = `${XML_HEAD}<Relationships xmlns="${NS_PKG_REL}">`
     + `<Relationship Id="rId1" Type="${NS_REL}/worksheet" Target="worksheets/sheet1.xml"/>`
     + `<Relationship Id="rId2" Type="${NS_REL}/sharedStrings" Target="sharedStrings.xml"/>`
+    + `<Relationship Id="rId3" Type="${NS_REL}/styles" Target="styles.xml"/>`
     + '</Relationships>';
+
+  // 第一個 xf 是預設格式；第二個指定 Excel 的內建「文字」格式（numFmtId 49）。
+  const styles = `${XML_HEAD}<styleSheet xmlns="${NS_MAIN}">`
+    + '<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>'
+    + '<fills count="1"><fill><patternFill patternType="none"/></fill></fills>'
+    + '<borders count="1"><border/></borders>'
+    + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+    + '<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+    + '<xf numFmtId="49" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>'
+    + '</styleSheet>';
 
   const rootRels = `${XML_HEAD}<Relationships xmlns="${NS_PKG_REL}">`
     + `<Relationship Id="rId1" Type="${NS_REL}/officeDocument" Target="xl/workbook.xml"/>`
@@ -182,6 +196,7 @@ function toXlsx(headers, rows, sheetName = '工作表1') {
     + `<Override PartName="/xl/workbook.xml" ContentType="${DOC_TYPE}.sheet.main+xml"/>`
     + `<Override PartName="/xl/worksheets/sheet1.xml" ContentType="${DOC_TYPE}.worksheet+xml"/>`
     + `<Override PartName="/xl/sharedStrings.xml" ContentType="${DOC_TYPE}.sharedStrings+xml"/>`
+    + `<Override PartName="/xl/styles.xml" ContentType="${DOC_TYPE}.styles+xml"/>`
     + '</Types>';
 
   // [Content_Types].xml 必須是 zip 的第一項，這是 OPC 規格要求的。
@@ -191,6 +206,7 @@ function toXlsx(headers, rows, sheetName = '工作表1') {
     { name: 'xl/workbook.xml', data: Buffer.from(workbook, 'utf8') },
     { name: 'xl/_rels/workbook.xml.rels', data: Buffer.from(workbookRels, 'utf8') },
     { name: 'xl/sharedStrings.xml', data: Buffer.from(sharedStrings, 'utf8') },
+    { name: 'xl/styles.xml', data: Buffer.from(styles, 'utf8') },
     { name: 'xl/worksheets/sheet1.xml', data: Buffer.from(sheet, 'utf8') },
   ]);
 }

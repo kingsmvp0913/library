@@ -44,6 +44,7 @@ describe('xlsx 產生器', () => {
       'xl/workbook.xml',
       'xl/_rels/workbook.xml.rels',
       'xl/sharedStrings.xml',
+      'xl/styles.xml',
       'xl/worksheets/sheet1.xml',
     ]);
   });
@@ -60,12 +61,15 @@ describe('xlsx 產生器', () => {
 
   /**
    * 這條是這個檔案存在的理由：編號被對方當成數字或日期，印出來的條碼就跟書上的對不上，
-   * 而且不會有任何錯誤訊息。全部 cell 都必須是 t="s"（sharedString，即文字）。
+   * 而且不會有任何錯誤訊息。全部 cell 都必須是 t="s"（sharedString，即文字），
+   * 並套用 Excel 的「文字」顯示格式（內建 numFmtId 49）。
    */
   test('每一格都是文字型別，不會被當成數字', () => {
     const sheet = unzip(toXlsx(['編號'], [['000123'], ['2026-08-18']]))['xl/worksheets/sheet1.xml'];
     expect(sheet.match(/<c /g)).toHaveLength(3);
     expect(sheet.match(/t="s"/g)).toHaveLength(3);
+    expect(sheet.match(/s="1"/g)).toHaveLength(3);
+    expect(unzip(toXlsx(['編號'], [['000123']]))['xl/styles.xml']).toContain('numFmtId="49"');
   });
 
   // 書名是使用者貼進來的，& 與 < 不跳脫會讓對方開檔直接說「檔案毀損」。
