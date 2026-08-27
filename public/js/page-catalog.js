@@ -520,6 +520,17 @@ document.getElementById('pickAll').addEventListener('change', (e) => {
   document.querySelectorAll('.pick').forEach((box) => { box.checked = e.target.checked; });
 });
 
+document.getElementById('selectedActions').addEventListener('click', () => {
+  if (!document.querySelectorAll('.pick:checked').length) {
+    return showToast('請先勾選館藏', 'error');
+  }
+  document.getElementById('selectedDialog').showModal();
+});
+
+document.getElementById('closeSelectedDialog').addEventListener('click', () => {
+  document.getElementById('selectedDialog').close();
+});
+
 document.getElementById('exportLabels').addEventListener('click', async (e) => {
   const ids = [...document.querySelectorAll('.pick:checked')].map((box) => Number(box.value));
   if (!ids.length) return showToast('請先勾選要印標籤的書', 'error');

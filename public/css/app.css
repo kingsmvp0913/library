@@ -32,6 +32,12 @@ table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--border); }
 .muted { color: var(--muted); }
 .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+dialog { max-width: min(560px, calc(100% - 32px)); border: 1px solid var(--border);
+         border-radius: 12px; background: var(--card); color: var(--text); padding: 20px; }
+dialog::backdrop { background: rgb(0 0 0 / .35); }
+dialog h2 { margin-top: 0; }
+dialog hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
+.dialog-actions { justify-content: flex-end; margin-top: 20px; }
 
 /* 掃碼輸入：老師站著操作，字要夠大 */
 .scan-box input { font-size: 24px; padding: 16px; }

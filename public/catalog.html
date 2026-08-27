@@ -28,15 +28,7 @@
         <button class="primary" id="addBook">📕 新增圖書（掃 ISBN）</button>
         <button id="addToy">🧩 新增教具（手動）</button>
         <input id="filter" placeholder="篩選書名／作者／ISBN" style="max-width:280px">
-        <button id="exportLabels">🏷️ 匯出勾選的標籤檔</button>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <span class="muted">修改勾選項目：</span>
-        <select id="batchCategory" style="max-width:180px"><option value="">類型不修改</option></select>
-        <select id="batchShelf" style="max-width:180px">
-          <option value="">櫃位不修改</option><option value="unset">改為未指定櫃位</option>
-        </select>
-        <button class="primary" id="batchUpdate">套用修改</button>
+        <button id="selectedActions">勾選項目操作…</button>
       </div>
     </div>
     <div id="form"></div>
@@ -45,6 +37,22 @@
       <tbody id="list"></tbody>
     </table></div>
   </main>
+  <dialog id="selectedDialog">
+    <h2>勾選項目操作</h2>
+    <div class="row">
+      <button id="exportLabels">🏷️ 匯出勾選的標籤檔</button>
+    </div>
+    <hr>
+    <h3>批次修改</h3>
+    <div class="row">
+      <select id="batchCategory" style="max-width:180px"><option value="">類型不修改</option></select>
+      <select id="batchShelf" style="max-width:180px">
+        <option value="">櫃位不修改</option><option value="unset">改為未指定櫃位</option>
+      </select>
+      <button class="primary" id="batchUpdate">套用修改</button>
+    </div>
+    <div class="row dialog-actions"><button id="closeSelectedDialog">關閉</button></div>
+  </dialog>
   <div id="printArea"></div>
   <script src="/js/app.js"></script>
   <script src="/js/omnisearch.js"></script>
