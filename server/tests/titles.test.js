@@ -154,3 +154,38 @@ describe('PUT /api/copies/:id', () => {
       .send({ status: 'whatever' }).expect(400);
   });
 });
+
+describe('PUT /api/titles/batch', () => {
+  test('有借出中的單冊時，批次修改類型與櫃位會全部擋下', async () => {
+    const { app, db, bookCat, toyCat } = await freshApp();
+    const { rows: [shelf] } = await db.query(
+      `INSERT INTO shelves (code,name) VALUES ('B','B櫃') RETURNING id`);
+    const first = await request(app).post('/api/titles')
+      .send({ title: '第一筆', category_id: bookCat, copies: 2 });
+    const second = await request(app).post('/api/titles')
+      .send({ title: '第二筆', category_id: bookCat, copies: 1 });
+    await db.query(`UPDATE copies SET status = 'out' WHERE id = $1`, [first.body.copies[0].id]);
+
+    const res = await request(app).put('/api/titles/batch').send({
+      titleIds: [first.body.title.id, second.body.title.id], category_id: toyCat, shelf_id: shelf.id,
+    }).expect(409);
+
+    expect(res.body.error).toBe('有 1 冊正在借出中，請歸還後再修改櫃位。');
+    const titles = await db.query('SELECT category_id FROM titles ORDER BY id');
+    expect(titles.rows.every((t) => t.category_id === bookCat)).toBe(true);
+    const copies = await db.query('SELECT shelf_id, status FROM copies ORDER BY id');
+    expect(copies.rows.every((c) => c.shelf_id === null)).toBe(true);
+  });
+
+  test('沒有借出中的單冊時可以批次修改類型與櫃位', async () => {
+    const { app, db, bookCat, toyCat } = await freshApp();
+    const { rows: [shelf] } = await db.query(
+      `INSERT INTO shelves (code,name) VALUES ('C','C櫃') RETURNING id`);
+    const first = await request(app).post('/api/titles').send({ title: '第一筆', category_id: bookCat });
+    const second = await request(app).post('/api/titles').send({ title: '第二筆', category_id: bookCat });
+
+    await request(app).put('/api/titles/batch').send({
+      titleIds: [first.body.title.id, second.body.title.id], category_id: toyCat, shelf_id: shelf.id,
+    }).expect(200).expect({ changedTitles: 2, changedCopies: 2 });
+  });
+});

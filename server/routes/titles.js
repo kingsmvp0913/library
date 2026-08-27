@@ -115,6 +115,50 @@ router.post('/:id/cover', upload.single('cover'), async (req, res, next) => {
 const EDITABLE = ['title', 'subtitle', 'series', 'volume', 'authors', 'illustrator',
   'translator', 'publisher', 'published_date', 'pages', 'description', 'category_id'];
 
+router.put('/batch', async (req, res, next) => {
+  try {
+    const titleIds = [...new Set((req.body.titleIds ?? []).map(Number).filter(Number.isInteger))];
+    if (!titleIds.length) return res.status(400).json({ error: '請選擇要修改的館藏' });
+    if (req.body.category_id === undefined && req.body.shelf_id === undefined) {
+      return res.status(400).json({ error: '請選擇要修改的項目' });
+    }
+
+    const marks = titleIds.map((_, i) => `$${i + 1}`).join(',');
+    const categoryMarks = titleIds.map((_, i) => `$${i + 2}`).join(',');
+    const shelfMarks = titleIds.map((_, i) => `$${i + 2}`).join(',');
+    let changedTitles = 0;
+    let changedCopies = 0;
+
+    if (req.body.shelf_id !== undefined) {
+      const { rows: borrowed } = await db.query(
+        `SELECT id FROM copies WHERE title_id IN (${marks}) AND status = 'out'`, titleIds);
+      if (borrowed.length) {
+        return res.status(409).json({
+          error: `有 ${borrowed.length} 冊正在借出中，請歸還後再修改櫃位。`,
+        });
+      }
+    }
+
+    if (req.body.category_id !== undefined) {
+      const { rows } = await db.query(
+        `UPDATE titles SET category_id = $1, updated_at = NOW() WHERE id IN (${categoryMarks}) RETURNING id`,
+        [req.body.category_id, ...titleIds]
+      );
+      changedTitles = rows.length;
+    }
+
+    if (req.body.shelf_id !== undefined) {
+      const { rows } = await db.query(
+        `UPDATE copies SET shelf_id = $1 WHERE title_id IN (${shelfMarks}) AND status <> 'out' RETURNING id`,
+        [req.body.shelf_id, ...titleIds]
+      );
+      changedCopies = rows.length;
+    }
+
+    res.json({ changedTitles, changedCopies });
+  } catch (err) { next(err); }
+});
+
 router.put('/:id', async (req, res, next) => {
   try {
     const id = Number(req.params.id);

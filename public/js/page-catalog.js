@@ -12,6 +12,14 @@ function shelfOptions() {
     + shelves.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
 }
 
+function batchOptions() {
+  document.getElementById('batchCategory').innerHTML = '<option value="">類型不修改</option>'
+    + categories.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  document.getElementById('batchShelf').innerHTML = '<option value="">櫃位不修改</option>'
+    + '<option value="unset">改為未指定櫃位</option>'
+    + shelves.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+}
+
 const STATUS_LABEL = { in: '在架', out: '借出中', lost: '遺失', repair: '修繕中' };
 
 function statusOptions(current) {
@@ -526,9 +534,32 @@ document.getElementById('exportLabels').addEventListener('click', async (e) => {
     btn.disabled = false;
   }
 });
+
+document.getElementById('batchUpdate').addEventListener('click', async (e) => {
+  const titleIds = [...document.querySelectorAll('.pick:checked')].map((box) => Number(box.value));
+  if (!titleIds.length) return showToast('請先勾選要修改的館藏', 'error');
+  const category = document.getElementById('batchCategory').value;
+  const shelf = document.getElementById('batchShelf').value;
+  if (!category && !shelf) return showToast('請選擇類型或櫃位', 'error');
+
+  const body = { titleIds };
+  if (category) body.category_id = Number(category);
+  if (shelf) body.shelf_id = shelf === 'unset' ? null : Number(shelf);
+  e.target.disabled = true;
+  try {
+    const result = await Api.put('/api/titles/batch', body);
+    const done = [];
+    if (category) done.push(`類型 ${result.changedTitles} 筆`);
+    if (shelf) done.push(`櫃位 ${result.changedCopies} 冊`);
+    showToast(`已更新${done.join('，')}`);
+    await loadList();
+  } catch (err) { showToast(err.message, 'error'); }
+  finally { e.target.disabled = false; }
+});
 createOmniSearch(document.getElementById('omni'), document.getElementById('omniPanel'));
 
 loadRefs().then(() => {
+  batchOptions();
   loadList();
   const preset = new URLSearchParams(location.search).get('title');
   if (preset) showDetail(Number(preset));
