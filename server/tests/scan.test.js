@@ -111,6 +111,74 @@ describe('POST /api/returns', () => {
   });
 });
 
+describe('POST /api/scan/batch', () => {
+  test('同一批可以同時借出與歸還，最後才一起生效', async () => {
+    const { app, db, catId, barcode, borrowerId, shelfId } = await setup();
+    const { body } = await request(app).post('/api/titles')
+      .send({ title: '準備歸還的書', category_id: catId, copies: 1, shelf_id: shelfId });
+    const returnBarcode = body.copies[0].barcode;
+    await request(app).post('/api/loans')
+      .send({ barcode: returnBarcode, borrower_id: borrowerId });
+
+    const res = await request(app).post('/api/scan/batch').send({
+      barcodes: [barcode, returnBarcode], borrower_id: borrowerId,
+    }).expect(200);
+
+    expect(res.body.results).toEqual([
+      expect.objectContaining({ barcode, action: 'borrow' }),
+      expect.objectContaining({ barcode: returnBarcode, action: 'return', shelfLabel: 'A櫃' }),
+    ]);
+    expect((await db.query('SELECT status FROM copies WHERE barcode = $1', [barcode])).rows[0].status)
+      .toBe('out');
+    expect((await db.query('SELECT status FROM copies WHERE barcode = $1', [returnBarcode])).rows[0].status)
+      .toBe('in');
+  });
+
+  test('整批只有歸還時不需要借閱人', async () => {
+    const { app, db, barcode, borrowerId } = await setup();
+    await request(app).post('/api/loans').send({ barcode, borrower_id: borrowerId });
+
+    await request(app).post('/api/scan/batch').send({ barcodes: [barcode] }).expect(200);
+
+    expect((await db.query('SELECT status FROM copies WHERE barcode = $1', [barcode])).rows[0].status)
+      .toBe('in');
+  });
+
+  test('包含待借出項目時必須提供借閱人', async () => {
+    const { app, db, barcode } = await setup();
+
+    await request(app).post('/api/scan/batch').send({ barcodes: [barcode] }).expect(400);
+
+    expect((await db.query('SELECT status FROM copies WHERE barcode = $1', [barcode])).rows[0].status)
+      .toBe('in');
+  });
+
+  test('批次含不可處理的單冊時整批都不變更', async () => {
+    const { app, db, catId, barcode, borrowerId } = await setup();
+    const { body } = await request(app).post('/api/titles')
+      .send({ title: '狀態異常的書', category_id: catId, copies: 1 });
+    const blockedBarcode = body.copies[0].barcode;
+    await db.query(`UPDATE copies SET status = 'lost' WHERE barcode = $1`, [blockedBarcode]);
+
+    await request(app).post('/api/scan/batch')
+      .send({ barcodes: [barcode, blockedBarcode], borrower_id: borrowerId }).expect(409);
+
+    expect((await db.query('SELECT status FROM copies WHERE barcode = $1', [barcode])).rows[0].status)
+      .toBe('in');
+  });
+
+  test('同一編號重複掃描不接受，包含省略橫槓的形式', async () => {
+    const { app, db, barcode, borrowerId } = await setup();
+
+    await request(app).post('/api/scan/batch').send({
+      barcodes: [barcode, barcode.replace('-', '')], borrower_id: borrowerId,
+    }).expect(400);
+
+    expect((await db.query('SELECT status FROM copies WHERE barcode = $1', [barcode])).rows[0].status)
+      .toBe('in');
+  });
+});
+
 describe('GET /api/loans', () => {
   test('?open=1 只回未歸還的', async () => {
     const { app, barcode, borrowerId } = await setup();

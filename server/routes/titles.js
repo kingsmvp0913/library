@@ -114,27 +114,34 @@ router.post('/:id/cover', upload.single('cover'), async (req, res, next) => {
 
 const EDITABLE = ['title', 'subtitle', 'series', 'volume', 'authors', 'illustrator',
   'translator', 'publisher', 'published_date', 'pages', 'description', 'category_id'];
+const BATCH_COPY_STATUSES = ['in', 'lost', 'repair'];
 
 router.put('/batch', async (req, res, next) => {
   try {
     const titleIds = [...new Set((req.body.titleIds ?? []).map(Number).filter(Number.isInteger))];
     if (!titleIds.length) return res.status(400).json({ error: '請選擇要修改的館藏' });
-    if (req.body.category_id === undefined && req.body.shelf_id === undefined) {
+    if (req.body.category_id === undefined && req.body.shelf_id === undefined
+        && req.body.status === undefined) {
       return res.status(400).json({ error: '請選擇要修改的項目' });
+    }
+    if (req.body.status !== undefined && !BATCH_COPY_STATUSES.includes(req.body.status)) {
+      return res.status(400).json({ error: '不認得的狀態' });
     }
 
     const marks = titleIds.map((_, i) => `$${i + 1}`).join(',');
     const categoryMarks = titleIds.map((_, i) => `$${i + 2}`).join(',');
-    const shelfMarks = titleIds.map((_, i) => `$${i + 2}`).join(',');
     let changedTitles = 0;
     let changedCopies = 0;
 
-    if (req.body.shelf_id !== undefined) {
+    if (req.body.shelf_id !== undefined || req.body.status !== undefined) {
       const { rows: borrowed } = await db.query(
         `SELECT id FROM copies WHERE title_id IN (${marks}) AND status = 'out'`, titleIds);
       if (borrowed.length) {
+        const target = req.body.shelf_id !== undefined && req.body.status !== undefined
+          ? '櫃位或狀態'
+          : (req.body.status !== undefined ? '狀態' : '櫃位');
         return res.status(409).json({
-          error: `有 ${borrowed.length} 冊正在借出中，請歸還後再修改櫃位。`,
+          error: `有 ${borrowed.length} 冊正在借出中，請歸還後再修改${target}。`,
         });
       }
     }
@@ -147,10 +154,21 @@ router.put('/batch', async (req, res, next) => {
       changedTitles = rows.length;
     }
 
-    if (req.body.shelf_id !== undefined) {
+    if (req.body.shelf_id !== undefined || req.body.status !== undefined) {
+      const sets = [];
+      const values = [];
+      if (req.body.shelf_id !== undefined) {
+        values.push(req.body.shelf_id);
+        sets.push(`shelf_id = $${values.length}`);
+      }
+      if (req.body.status !== undefined) {
+        values.push(req.body.status);
+        sets.push(`status = $${values.length}`);
+      }
+      const copyMarks = titleIds.map((_, i) => `$${values.length + i + 1}`).join(',');
       const { rows } = await db.query(
-        `UPDATE copies SET shelf_id = $1 WHERE title_id IN (${shelfMarks}) AND status <> 'out' RETURNING id`,
-        [req.body.shelf_id, ...titleIds]
+        `UPDATE copies SET ${sets.join(',')} WHERE title_id IN (${copyMarks}) AND status <> 'out' RETURNING id`,
+        [...values, ...titleIds]
       );
       changedCopies = rows.length;
     }

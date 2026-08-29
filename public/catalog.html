@@ -37,6 +37,9 @@
       <tbody id="list"></tbody>
     </table></div>
   </main>
+  <dialog id="detailDialog" class="detail-dialog">
+    <div id="detailContent"></div>
+  </dialog>
   <dialog id="selectedDialog">
     <h2>勾選項目操作</h2>
     <div class="row">
@@ -48,6 +51,12 @@
       <select id="batchCategory" style="max-width:180px"><option value="">類型不修改</option></select>
       <select id="batchShelf" style="max-width:180px">
         <option value="">櫃位不修改</option><option value="unset">改為未指定櫃位</option>
+      </select>
+      <select id="batchStatus" style="max-width:180px">
+        <option value="">狀態不修改</option>
+        <option value="in">改為在架</option>
+        <option value="lost">改為遺失</option>
+        <option value="repair">改為修繕中</option>
       </select>
       <button class="primary" id="batchUpdate">套用修改</button>
     </div>

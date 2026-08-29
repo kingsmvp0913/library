@@ -8,9 +8,9 @@ const UNSET = '尚未指定櫃位';
  *
  * 書櫃只有一層——早期版本有「櫃 → 層」兩層，實際使用後判定太複雜已移除。
  */
-async function shelfLabelOf(shelfId) {
+async function shelfLabelOf(shelfId, querier = db) {
   if (!shelfId) return UNSET;
-  const { rows } = await db.query('SELECT name FROM shelves WHERE id = $1', [shelfId]);
+  const { rows } = await querier.query('SELECT name FROM shelves WHERE id = $1', [shelfId]);
   return rows.length ? rows[0].name : UNSET;
 }
 

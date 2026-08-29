@@ -244,17 +244,19 @@ CREATE UNIQUE INDEX loans_one_open_per_copy ON loans(copy_id) WHERE returned_at 
   - 上傳走 `POST /api/titles/:id/cover`（multer，限圖片、限 5MB），存 `data/covers/title-<id>.jpg`，與抓下來的封面走同一個 `cover_path` 欄位。
   - 圖書若抓不到封面，也可以用同一個入口手動補圖。
 
-### 6.2 列表掃碼借還（同一格輸入框，系統自行判斷）
+### 6.2 批次掃碼借還（同一格輸入框，系統自行判斷）
 
-掃「單冊編號」→ `POST /api/scan` → 依該冊 `status` 決定畫面：
+先選借閱人（純歸還可不選），再連續掃「單冊編號」→ `POST /api/scan` → 依各冊 `status` 加入同一份待確認清單。掃碼階段不改資料，最後按一次「確認全部」才由 `POST /api/scan/batch` 在單一資料庫 transaction 中整批生效；完成後清空清單，但保留借閱人選項，方便同一人連續批次借閱。
 
-| 現況 | 畫面 | 動作 |
+| 現況 | 待確認清單 | 確認後動作 |
 |---|---|---|
-| `in` 在架 | 書封 + 書名 + **可搜尋的借閱人下拉** | Enter 借出 |
-| `out` 借出中 | **大字顯示「請放回：A櫃 · 第2層」** + 借閱人與借出時間 | 一鍵歸還 |
+| `in` 在架 | 書名 +「借出」+ 借閱人 | 借出給目前選擇的借閱人 |
+| `out` 借出中 | 書名 +「歸還」+ **「放回：A櫃」** | 歸還並記錄放回櫃位 |
 | `lost` / `repair` | 狀態警示 | 提示先處理狀態 |
 
-「還書自動列出櫃位」即取 `copies.shelf_id` 一路往上組成「櫃 · 層」字串；未設櫃位則顯示「尚未指定櫃位」並提供就地指定。
+同一批可混合借出與歸還；重複編號不重複加入，誤掃項目可在確認前移除。批次內任何一冊無法處理時整批不變更，不可留下只成功一半的資料。
+
+「還書自動列出櫃位」即取 `copies.shelf_id` 的書櫃名稱；未設櫃位則顯示「尚未指定櫃位」。
 
 ## 7. 全站搜尋自動完成
 
@@ -273,7 +275,7 @@ CREATE UNIQUE INDEX loans_one_open_per_copy ON loans(copy_id) WHERE returned_at 
 
 | 頁面 | 內容 |
 |---|---|
-| **借還台**（首頁） | 大型掃碼輸入框 + 全站搜尋 + 今日借還清單 + 目前外借中 |
+| **借還台**（首頁） | 借閱人選擇 + 大型掃碼輸入框 + 混合借還待確認清單 + 目前外借中 |
 | **館藏** | 書目列表，可依類型／櫃位／狀態篩選；「新增」進掃 ISBN 流程；展開看各冊與其編號、櫃位、狀態 |
 | **書櫃管理** | 兩層樹狀維護；顯示每櫃現有冊數 |
 | **借閱人管理** | 清單維護，可搜尋 |
@@ -300,6 +302,7 @@ GET    /api/copies/:barcode
 PUT    /api/copies/:id                   # 改櫃位 / 狀態
 
 POST   /api/scan                         # { barcode } → 該冊現況與建議動作
+POST   /api/scan/batch                   # { barcodes, borrower_id? } → 整批借出／歸還
 POST   /api/loans                        # { copy_id, borrower_id } → 借出
 POST   /api/returns                      # { barcode } → 歸還，回傳應放回的櫃位
 GET    /api/loans?open=1&q=

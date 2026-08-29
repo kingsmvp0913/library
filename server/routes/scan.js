@@ -14,14 +14,18 @@ async function findCopy(barcode) {
   return rows[0] ?? null;
 }
 
-async function openLoanOf(copyId) {
-  const { rows } = await db.query(
+async function openLoanOf(copyId, querier = db) {
+  const { rows } = await querier.query(
     `SELECT l.*, b.name AS borrower_name, b.class_name
        FROM loans l JOIN borrowers b ON b.id = l.borrower_id
       WHERE l.copy_id = $1 AND l.returned_at IS NULL
       ORDER BY l.id DESC LIMIT 1`, [copyId]
   );
   return rows[0] ?? null;
+}
+
+function batchError(status, message) {
+  return Object.assign(new Error(message), { status });
 }
 
 router.post('/scan', async (req, res, next) => {
@@ -57,6 +61,90 @@ router.post('/scan', async (req, res, next) => {
     }
     res.json({ ...base, action: 'borrow' });
   } catch (err) { next(err); }
+});
+
+router.post('/scan/batch', async (req, res, next) => {
+  const input = req.body.barcodes;
+  if (!Array.isArray(input) || !input.length) {
+    return res.status(400).json({ error: '請先掃描至少一冊' });
+  }
+
+  const barcodes = input.map(canonicalBarcode);
+  if (barcodes.some((barcode) => !barcode)) {
+    return res.status(400).json({ error: '清單中有空白編號，請移除後再確認' });
+  }
+  if (new Set(barcodes).size !== barcodes.length) {
+    return res.status(400).json({ error: '同一冊不能重複加入清單' });
+  }
+
+  let client;
+  try {
+    client = await db.getPool().connect();
+    await client.query('BEGIN');
+    const pending = [];
+
+    for (const barcode of barcodes) {
+      const { rows } = await client.query(
+        'SELECT * FROM copies WHERE barcode = $1 FOR UPDATE', [barcode]
+      );
+      const copy = rows[0];
+      if (!copy) throw batchError(404, `找不到編號 ${barcode}，請確認掃的是館藏編號`);
+
+      if (copy.status === 'in') {
+        pending.push({ action: 'borrow', copy });
+        continue;
+      }
+      if (copy.status === 'out') {
+        const loan = await openLoanOf(copy.id, client);
+        if (!loan) throw batchError(409, `${barcode} 沒有借出中的紀錄`);
+        pending.push({ action: 'return', copy, loan });
+        continue;
+      }
+      const label = copy.status === 'lost' ? '遺失' : '維修中';
+      throw batchError(409, `${barcode} 目前標記為${label}，不能借還`);
+    }
+
+    if (pending.some((item) => item.action === 'borrow')) {
+      if (!req.body.borrower_id) throw batchError(400, '清單中有待借出項目，請先選擇借閱人');
+      const { rows } = await client.query(
+        'SELECT id FROM borrowers WHERE id = $1 AND active = TRUE',
+        [Number(req.body.borrower_id)]
+      );
+      if (!rows.length) throw batchError(400, '找不到可用的借閱人，請重新選擇');
+    }
+
+    for (const item of pending) {
+      if (item.action === 'borrow') {
+        await client.query(
+          'INSERT INTO loans (copy_id, borrower_id) VALUES ($1,$2)',
+          [item.copy.id, Number(req.body.borrower_id)]
+        );
+        await client.query(`UPDATE copies SET status = 'out' WHERE id = $1`, [item.copy.id]);
+      } else {
+        await client.query(
+          `UPDATE loans SET returned_at = NOW(), return_shelf_id = $1 WHERE id = $2`,
+          [item.copy.shelf_id ?? null, item.loan.id]
+        );
+        await client.query(`UPDATE copies SET status = 'in' WHERE id = $1`, [item.copy.id]);
+      }
+    }
+
+    const results = await Promise.all(pending.map(async (item) => ({
+      barcode: item.copy.barcode,
+      action: item.action,
+      ...(item.action === 'return'
+        ? { shelfLabel: await shelfLabelOf(item.copy.shelf_id, client) }
+        : {}),
+    })));
+    await client.query('COMMIT');
+    res.json({ results });
+  } catch (err) {
+    if (client) await client.query('ROLLBACK');
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    next(err);
+  } finally {
+    client?.release();
+  }
 });
 
 router.post('/loans', async (req, res, next) => {

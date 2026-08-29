@@ -188,4 +188,44 @@ describe('PUT /api/titles/batch', () => {
       titleIds: [first.body.title.id, second.body.title.id], category_id: toyCat, shelf_id: shelf.id,
     }).expect(200).expect({ changedTitles: 2, changedCopies: 2 });
   });
+
+  test('勾選書目可以批次修改旗下所有單冊的狀態', async () => {
+    const { app, db, bookCat } = await freshApp();
+    const first = await request(app).post('/api/titles')
+      .send({ title: '第一筆', category_id: bookCat, copies: 2 });
+    const second = await request(app).post('/api/titles')
+      .send({ title: '第二筆', category_id: bookCat, copies: 1 });
+
+    await request(app).put('/api/titles/batch').send({
+      titleIds: [first.body.title.id, second.body.title.id], status: 'lost',
+    }).expect(200).expect({ changedTitles: 0, changedCopies: 3 });
+
+    const copies = await db.query('SELECT status FROM copies ORDER BY id');
+    expect(copies.rows.map((copy) => copy.status)).toEqual(['lost', 'lost', 'lost']);
+  });
+
+  test('批次修改狀態不能包含借出中的單冊', async () => {
+    const { app, db, bookCat } = await freshApp();
+    const title = await request(app).post('/api/titles')
+      .send({ title: '借出中的書', category_id: bookCat, copies: 2 });
+    await db.query(`UPDATE copies SET status = 'out' WHERE id = $1`, [title.body.copies[0].id]);
+
+    await request(app).put('/api/titles/batch').send({
+      titleIds: [title.body.title.id], status: 'repair',
+    }).expect(409);
+
+    const copies = await db.query('SELECT status FROM copies ORDER BY id');
+    expect(copies.rows.map((copy) => copy.status)).toEqual(['out', 'in']);
+  });
+
+  test('批次修改不接受借出中或未知狀態', async () => {
+    const { app, bookCat } = await freshApp();
+    const title = await request(app).post('/api/titles')
+      .send({ title: '測試書', category_id: bookCat });
+
+    await request(app).put('/api/titles/batch')
+      .send({ titleIds: [title.body.title.id], status: 'out' }).expect(400);
+    await request(app).put('/api/titles/batch')
+      .send({ titleIds: [title.body.title.id], status: 'whatever' }).expect(400);
+  });
 });

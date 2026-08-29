@@ -87,6 +87,26 @@ const cfg = RESOURCES[document.body.dataset.resource];
 let rows = [];
 let editingId = null;
 let showInactive = false;
+const detailDialogEl = document.getElementById('detailDialog');
+const detailHostEl = document.getElementById('detail');
+let detailRequest = 0;
+
+function renderDetailDialog(heading, content) {
+  detailHostEl.innerHTML = `<div class="row detail-dialog-header">
+    <h2>${esc(heading)}</h2><button class="close-detail">關閉</button>
+  </div>${content}`;
+  detailHostEl.querySelector('.close-detail').addEventListener('click', () => {
+    detailDialogEl.close();
+  });
+  if (!detailDialogEl.open) detailDialogEl.showModal();
+}
+
+if (detailDialogEl) {
+  detailDialogEl.addEventListener('close', () => {
+    detailRequest++;
+    detailHostEl.innerHTML = '';
+  });
+}
 
 function cellValue(r, col) {
   const v = r[col.key] ?? '';
@@ -142,29 +162,24 @@ async function load() {
  * 原本那兩頁完全不讀 URL 參數，點過去等於什麼都沒發生——這個函式就是接收端。
  */
 async function showDetail(id) {
-  const host = document.getElementById('detail');
-  if (!host || !cfg.detail) return;
+  if (!detailDialogEl || !cfg.detail) return;
+  const request = ++detailRequest;
   const row = rows.find((r) => r.id === id);
   if (!row) {
     // 停用的借閱人不在預設清單裡，從搜尋跳過來時要能自己補上
-    host.innerHTML = '<div class="card"><p class="muted">找不到這筆資料，'
-      + '可能已被刪除或停用（勾選「顯示已停用的」再試）。</p></div>';
+    renderDetailDialog('找不到明細', '<p class="muted">找不到這筆資料，'
+      + '可能已被刪除或停用（勾選「顯示已停用的」再試）。</p>');
     return;
   }
-  host.innerHTML = `<div class="card"><h3>${esc(cfg.detail.heading(row))}</h3>
-    <p class="muted">載入中…</p></div>`;
+  renderDetailDialog(cfg.detail.heading(row), '<p class="muted">載入中…</p>');
   try {
     const data = await cfg.detail.load(id);
-    host.innerHTML = `<div class="card">
-      <div class="row"><h3 style="margin:0">${esc(cfg.detail.heading(row))}</h3>
-        <button id="closeDetail" style="margin-left:auto">關閉</button></div>
-      ${cfg.detail.render(data, row)}
-    </div>`;
-    document.getElementById('closeDetail').addEventListener('click', () => {
-      host.innerHTML = '';
-    });
+    if (request !== detailRequest || !detailDialogEl.open) return;
+    renderDetailDialog(cfg.detail.heading(row), cfg.detail.render(data, row));
   } catch (err) {
-    host.innerHTML = `<div class="card"><p class="muted">${esc(err.message)}</p></div>`;
+    if (request === detailRequest && detailDialogEl.open) {
+      renderDetailDialog(cfg.detail.heading(row), `<p class="muted">${esc(err.message)}</p>`);
+    }
   }
 }
 

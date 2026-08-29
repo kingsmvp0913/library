@@ -1,5 +1,23 @@
 let categories = [], shelves = [];
 let busy = false;                 // 防止查詢／送出期間重複點出多個區塊
+const detailDialogEl = document.getElementById('detailDialog');
+const detailContentEl = document.getElementById('detailContent');
+let detailRequest = 0;
+
+function renderDetailDialog(heading, content) {
+  detailContentEl.innerHTML = `<div class="row detail-dialog-header">
+    <h2>${esc(heading)}</h2><button class="close-detail">關閉</button>
+  </div>${content}`;
+  detailContentEl.querySelector('.close-detail').addEventListener('click', () => {
+    detailDialogEl.close();
+  });
+  if (!detailDialogEl.open) detailDialogEl.showModal();
+}
+
+detailDialogEl.addEventListener('close', () => {
+  detailRequest++;
+  detailContentEl.innerHTML = '';
+});
 
 async function loadRefs() {
   [categories, shelves] = await Promise.all([
@@ -168,10 +186,21 @@ function extraMeta(t) {
  * 圖書也常常查不到封面，兩者都需要手動補。
  */
 async function showDetail(id) {
-  const t = await Api.get(`/api/titles/${id}`);
+  const request = ++detailRequest;
+  renderDetailDialog('館藏明細', '<p class="muted">載入中…</p>');
+  let t;
+  try {
+    t = await Api.get(`/api/titles/${id}`);
+  } catch (err) {
+    if (request === detailRequest && detailDialogEl.open) {
+      renderDetailDialog('館藏明細', `<p class="muted">${esc(err.message)}</p>`);
+    }
+    return;
+  }
+  if (request !== detailRequest || !detailDialogEl.open) return;
   const isToy = t.kind === 'toy';
-  document.getElementById('form').innerHTML = `<div class="card">
-    <h2>${esc(t.title)}</h2>
+  renderDetailDialog('館藏明細', `
+    <h3 class="detail-title">${esc(t.title)}</h3>
     <img id="cover" class="cover-detail" src="${esc(t.cover_path ?? '')}" alt=""
          ${t.cover_path ? '' : 'style="display:none"'}>
     <p class="muted">${isToy
@@ -187,8 +216,7 @@ async function showDetail(id) {
         <input type="file" id="coverFile" accept="image/*" style="max-width:230px"></label>
       <button class="danger" id="delTitle" style="margin-left:auto">刪除整筆</button>
     </div>
-    <div id="copies"></div>
-  </div>`;
+    <div id="copies"></div>`);
 
   document.getElementById('editTitle').addEventListener('click', () => renderEditForm(t));
 
@@ -197,7 +225,7 @@ async function showDetail(id) {
     try {
       await Api.del(`/api/titles/${id}`);
       showToast('已刪除');
-      document.getElementById('form').innerHTML = '';
+      detailDialogEl.close();
       loadList();
     } catch (err) {
       // 後端會說「還有 3 冊，請先逐冊刪除」
@@ -312,10 +340,10 @@ async function showDetail(id) {
 
 /** 建檔之後才發現打錯字、或想補上作者與 ISBN——這些都得能改。 */
 function renderEditForm(t) {
+  detailRequest++;
   const isToy = t.kind === 'toy';
   const cats = categories.filter((c) => c.kind === t.kind);
-  document.getElementById('form').innerHTML = `<div class="card">
-    <h3>編輯${isToy ? '教具' : '書目'}資料</h3>
+  renderDetailDialog(`編輯${isToy ? '教具' : '書目'}資料`, `
     <p><input id="e-title" placeholder="${isToy ? '教具名稱' : '書名'}"
               value="${esc(t.title ?? '')}"></p>
     ${isToy
@@ -345,7 +373,7 @@ function renderEditForm(t) {
       <button class="primary" id="e-save">儲存</button>
       <button id="e-cancel">取消</button>
     </div>
-  </div>`;
+  `);
 
   document.getElementById('e-cancel').addEventListener('click', () => showDetail(t.id));
 
@@ -551,17 +579,20 @@ document.getElementById('batchUpdate').addEventListener('click', async (e) => {
   if (!titleIds.length) return showToast('請先勾選要修改的館藏', 'error');
   const category = document.getElementById('batchCategory').value;
   const shelf = document.getElementById('batchShelf').value;
-  if (!category && !shelf) return showToast('請選擇類型或櫃位', 'error');
+  const status = document.getElementById('batchStatus').value;
+  if (!category && !shelf && !status) return showToast('請選擇類型、櫃位或狀態', 'error');
 
   const body = { titleIds };
   if (category) body.category_id = Number(category);
   if (shelf) body.shelf_id = shelf === 'unset' ? null : Number(shelf);
+  if (status) body.status = status;
   e.target.disabled = true;
   try {
     const result = await Api.put('/api/titles/batch', body);
     const done = [];
     if (category) done.push(`類型 ${result.changedTitles} 筆`);
     if (shelf) done.push(`櫃位 ${result.changedCopies} 冊`);
+    if (status) done.push(`狀態 ${result.changedCopies} 冊`);
     showToast(`已更新${done.join('，')}`);
     await loadList();
   } catch (err) { showToast(err.message, 'error'); }

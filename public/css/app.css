@@ -38,9 +38,31 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 dialog h2 { margin-top: 0; }
 dialog hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 .dialog-actions { justify-content: flex-end; margin-top: 20px; }
+.detail-dialog { width: min(1000px, calc(100% - 32px)); max-width: 1000px;
+  max-height: calc(100vh - 32px); overflow: auto; }
+.detail-dialog-header { position: sticky; top: -20px; z-index: 2; padding: 4px 0 12px;
+  background: var(--card); border-bottom: 1px solid var(--border);
+  justify-content: space-between; }
+.detail-dialog-header h2 { margin: 0; }
+.detail-title { margin: 18px 0 10px; }
 
 /* 掃碼輸入：老師站著操作，字要夠大 */
 .scan-box input { font-size: 24px; padding: 16px; }
+.scan-box .row input { flex: 1; min-width: 240px; width: auto; }
+.batch-borrower { margin-bottom: 18px; max-width: 420px; }
+.batch-borrower select { margin-top: 6px; }
+.scan-box > .muted { margin-bottom: 0; }
+.batch-heading { justify-content: space-between; }
+.batch-heading h2 { margin: 0; }
+.batch-count { display: inline-block; min-width: 32px; padding: 3px 9px;
+  border-radius: 999px; background: var(--accent); color: #fff; text-align: center; }
+.batch-table { overflow-x: auto; margin-top: 12px; }
+.batch-actions { justify-content: space-between; margin-top: 16px; }
+.batch-remove { padding: 6px 10px; }
+.batch-shelf { color: var(--shelf-text); font-weight: 700; }
+.batch-complete h2 { margin-top: 0; }
+.badge-borrow { background: var(--accent); color: #fff; }
+.badge-return { background: var(--ok); color: #fff; }
 
 /* 還書時「請放回哪一格」是畫面上最重要的資訊 */
 .shelf-banner { background: var(--shelf-bg); color: var(--shelf-text);
@@ -94,7 +116,7 @@ dialog hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
   border: 3px solid var(--border); border-top-color: var(--accent);
   border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-button:disabled, input:disabled { opacity: .55; cursor: not-allowed; }
+button:disabled, input:disabled, select:disabled { opacity: .55; cursor: not-allowed; }
 
 /* 列印：只印條碼貼紙，其餘一律不印 */
 #printArea { display: none; }

@@ -24,13 +24,38 @@
   </nav>
   <main>
     <div class="card scan-box">
+      <div class="batch-borrower">
+        <label for="borrower"><strong>1. 選擇借閱人</strong> <span class="muted">（只有歸還時可不選）</span></label>
+        <select id="borrower">
+          <option value="">載入借閱人…</option>
+        </select>
+      </div>
+      <label for="scan"><strong>2. 連續掃描館藏編號</strong></label>
       <div class="row">
         <input id="scan" placeholder="掃描書本上的編號（或直接輸入後按 Enter）" autocomplete="off">
         <button id="camera" class="no-print">📷 用鏡頭掃</button>
       </div>
+      <p class="muted">掃描只會加入清單，不會立即借出或歸還。</p>
       <video id="video" hidden playsinline style="width:100%;max-width:420px;margin-top:12px"></video>
     </div>
     <div id="result"></div>
+    <div class="card">
+      <div class="row batch-heading">
+        <h2>3. 確認這一批 <span class="batch-count" id="batchCount">0</span></h2>
+        <button id="clearBatch" disabled>清空清單</button>
+      </div>
+      <p class="muted" id="batchEmpty">尚未掃描任何館藏。</p>
+      <div class="batch-table" id="batchTable" hidden>
+        <table>
+          <thead><tr><th>編號</th><th>名稱</th><th>動作</th><th>處理方式</th><th></th></tr></thead>
+          <tbody id="batchItems"></tbody>
+        </table>
+      </div>
+      <div class="row batch-actions">
+        <strong id="batchSummary">待借出 0 冊 · 待歸還 0 冊</strong>
+        <button class="primary" id="confirmBatch" disabled>確認全部（0）</button>
+      </div>
+    </div>
     <div class="card">
       <h3>目前外借中</h3>
       <table><tbody id="openLoans"></tbody></table>
