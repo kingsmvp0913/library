@@ -246,7 +246,7 @@ CREATE UNIQUE INDEX loans_one_open_per_copy ON loans(copy_id) WHERE returned_at 
 
 ### 6.2 批次掃碼借還（同一格輸入框，系統自行判斷）
 
-先選借閱人（純歸還可不選），再連續掃「單冊編號」→ `POST /api/scan` → 依各冊 `status` 加入同一份待確認清單。掃碼階段不改資料，最後按一次「確認全部」才由 `POST /api/scan/batch` 在單一資料庫 transaction 中整批生效；完成後清空清單，但保留借閱人選項，方便同一人連續批次借閱。
+先選借閱人（純歸還可不選），再連續掃「單冊編號」→ `POST /api/scan` → 依各冊 `status` 加入同一份待確認清單。掃碼階段不改資料，第一冊掃入後才顯示待確認區塊，最後按一次「確認全部」才由 `POST /api/scan/batch` 在單一資料庫 transaction 中整批生效；完成後清空清單，但保留借閱人選項，方便同一人連續批次借閱。「目前外借中」固定展開，隨時可查尚未歸還的項目。
 
 | 現況 | 待確認清單 | 確認後動作 |
 |---|---|---|
@@ -276,10 +276,12 @@ CREATE UNIQUE INDEX loans_one_open_per_copy ON loans(copy_id) WHERE returned_at 
 | 頁面 | 內容 |
 |---|---|
 | **借還台**（首頁） | 借閱人選擇 + 大型掃碼輸入框 + 混合借還待確認清單 + 目前外借中 |
-| **館藏** | 書目列表，可依類型／櫃位／狀態篩選；「新增」進掃 ISBN 流程；展開看各冊與其編號、櫃位、狀態 |
+| **館藏** | 書目列表，可依類型／櫃位／狀態篩選；「新增」進掃 ISBN 流程；以跳窗看各冊與其編號、櫃位、狀態 |
 | **書櫃管理** | 兩層樹狀維護；顯示每櫃現有冊數 |
 | **借閱人管理** | 清單維護，可搜尋 |
 | **借閱紀錄** | 全部借還歷史，可搜尋、可篩「未歸還」 |
+
+館藏、書櫃與借閱人的「明細」一律使用可關閉的 modal dialog，不在清單上方展開。關閉鍵固定在右上角；館藏明細標題直接接書名，一般操作列放在內容頂端靠左，編輯時的儲存與取消固定在右下角。提示訊息顯示在 dialog 之上，不得被遮住。館藏清單勾選多筆後，可批次修改類型、櫃位，或將旗下未借出的單冊改為在架／遺失／修繕中，套用成功即關閉視窗；任何借出中的單冊都會擋下整批櫃位或狀態修改。單冊借出中時，明細不提供狀態欄位，API 也拒絕手動改狀態；`out` 只能由借還流程設定。
 
 ## 9. API 一覽
 
@@ -295,11 +297,12 @@ GET    /api/titles?q=&category=&shelf=&status=
 POST   /api/titles                       # 建書目 + N 冊，回各冊編號
 GET    /api/titles/:id                   # 含所屬各冊
 PUT    /api/titles/:id
+PUT    /api/titles/batch                 # 批次修改類型／櫃位／單冊狀態
 POST   /api/titles/:id/copies            # 加冊
 POST   /api/titles/:id/cover             # 手動上傳封面／教具照片（multer，限圖片 5MB）
 
 GET    /api/copies/:barcode
-PUT    /api/copies/:id                   # 改櫃位 / 狀態
+PUT    /api/copies/:id                   # 改櫃位 / 狀態（借出中不可改狀態，out 只能由借還流程設定）
 
 POST   /api/scan                         # { barcode } → 該冊現況與建議動作
 POST   /api/scan/batch                   # { barcodes, borrower_id? } → 整批借出／歸還

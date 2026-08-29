@@ -40,11 +40,22 @@ function showToast(message, type = 'ok') {
     host.id = 'toast';
     document.body.appendChild(host);
   }
+  if ('showPopover' in host) {
+    host.setAttribute('popover', 'manual');
+    // 每次都重新送到 top layer 最上層；即使訊息出現後才開 dialog，下一則也不會被蓋住。
+    if (host.matches(':popover-open')) host.hidePopover();
+    host.showPopover();
+  }
   const el = document.createElement('div');
   el.textContent = message;
   if (type === 'error') el.className = 'error';
   host.appendChild(el);
-  setTimeout(() => el.remove(), 3200);
+  setTimeout(() => {
+    el.remove();
+    if (!host.children.length && 'hidePopover' in host && host.matches(':popover-open')) {
+      host.hidePopover();
+    }
+  }, 3200);
 }
 
 /** 每頁右上的離線徽章。離線時要講清楚影響範圍，不能只顯示一個紅點。 */

@@ -93,7 +93,8 @@ let detailRequest = 0;
 
 function renderDetailDialog(heading, content) {
   detailHostEl.innerHTML = `<div class="row detail-dialog-header">
-    <h2>${esc(heading)}</h2><button class="close-detail">關閉</button>
+    <h2>${esc(heading)}</h2>
+    <button class="close-detail"><span class="dialog-close-x">✕</span> 關閉</button>
   </div>${content}`;
   detailHostEl.querySelector('.close-detail').addEventListener('click', () => {
     detailDialogEl.close();

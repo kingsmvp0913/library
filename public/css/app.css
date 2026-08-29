@@ -42,9 +42,22 @@ dialog hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
   max-height: calc(100vh - 32px); overflow: auto; }
 .detail-dialog-header { position: sticky; top: -20px; z-index: 2; padding: 4px 0 12px;
   background: var(--card); border-bottom: 1px solid var(--border);
-  justify-content: space-between; }
+  justify-content: space-between; flex-wrap: nowrap; }
 .detail-dialog-header h2 { margin: 0; }
-.detail-title { margin: 18px 0 10px; }
+.detail-dialog-header .close-detail, .detail-dialog-header #closeSelectedDialog {
+  flex: 0 0 auto; margin-left: auto; }
+.dialog-close-x { color: var(--danger); font-weight: 800; }
+.detail-dialog-actions { position: sticky; bottom: -20px; z-index: 2; flex-wrap: wrap;
+  padding: 12px 0 4px; background: var(--card); border-top: 1px solid var(--border); }
+.detail-dialog-toolbar { justify-content: flex-start; margin: 16px 0 4px; }
+.file-button { font: inherit; padding: 10px 18px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--card); color: var(--text); }
+#copies { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px; margin-top: 18px; }
+.copy-card { min-width: 0; padding: 12px; text-align: center;
+  border: 1px solid var(--border); border-radius: 10px; }
+.copy-card svg { max-width: 100%; height: auto; }
+.copy-actions { justify-content: center; margin-top: 6px; }
 
 /* 掃碼輸入：老師站著操作，字要夠大 */
 .scan-box input { font-size: 24px; padding: 16px; }
@@ -63,6 +76,7 @@ dialog hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 .batch-complete h2 { margin-top: 0; }
 .badge-borrow { background: var(--accent); color: #fff; }
 .badge-return { background: var(--ok); color: #fff; }
+.open-loans h3 { margin-top: 0; }
 
 /* 還書時「請放回哪一格」是畫面上最重要的資訊 */
 .shelf-banner { background: var(--shelf-bg); color: var(--shelf-text);
@@ -81,7 +95,8 @@ dialog hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 /* 送去標籤機的點陣圖預覽。底一定要白：黑點畫在深色底上就看不出對錯了。 */
 .label-preview { margin-top: 8px; background: #fff; border: 1px solid var(--border); }
 
-#toast { position: fixed; right: 16px; bottom: 16px; display: flex;
+#toast { position: fixed; inset: auto 16px 16px auto; display: flex; margin: 0;
+  padding: 0; border: 0; background: transparent;
   flex-direction: column; gap: 8px; z-index: 50; }
 #toast div { padding: 12px 18px; border-radius: 8px; color: #fff; background: var(--ok); }
 #toast div.error { background: var(--danger); }

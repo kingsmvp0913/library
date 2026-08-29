@@ -4,10 +4,19 @@ const detailDialogEl = document.getElementById('detailDialog');
 const detailContentEl = document.getElementById('detailContent');
 let detailRequest = 0;
 
-function renderDetailDialog(heading, content) {
+function renderDetailDialog(heading, content, actions = '', actionPlacement = 'footer') {
+  const actionBar = actions
+    ? `<div class="row ${actionPlacement === 'top'
+      ? 'detail-dialog-toolbar'
+      : 'dialog-actions detail-dialog-actions'}">${actions}</div>`
+    : '';
   detailContentEl.innerHTML = `<div class="row detail-dialog-header">
-    <h2>${esc(heading)}</h2><button class="close-detail">關閉</button>
-  </div>${content}`;
+      <h2>${esc(heading)}</h2>
+      <button class="close-detail"><span class="dialog-close-x">✕</span> 關閉</button>
+    </div>
+    ${actionPlacement === 'top' ? actionBar : ''}
+    ${content}
+    ${actionPlacement === 'footer' ? actionBar : ''}`;
   detailContentEl.querySelector('.close-detail').addEventListener('click', () => {
     detailDialogEl.close();
   });
@@ -199,8 +208,7 @@ async function showDetail(id) {
   }
   if (request !== detailRequest || !detailDialogEl.open) return;
   const isToy = t.kind === 'toy';
-  renderDetailDialog('館藏明細', `
-    <h3 class="detail-title">${esc(t.title)}</h3>
+  renderDetailDialog(`館藏明細：${t.title}`, `
     <img id="cover" class="cover-detail" src="${esc(t.cover_path ?? '')}" alt=""
          ${t.cover_path ? '' : 'style="display:none"'}>
     <p class="muted">${isToy
@@ -208,15 +216,13 @@ async function showDetail(id) {
       : `${esc(t.authors ?? '')}　${esc(t.publisher ?? '')}　${esc(t.isbn13 ?? '')}`}</p>
     ${isToy || !extraMeta(t).length ? ''
       : `<p class="muted">${extraMeta(t).map(esc).join('　')}</p>`}
-    <div class="row no-print">
-      <button id="editTitle">編輯資料</button>
-      <button id="addCopy">加冊</button>
-      <button id="printAll">列印全部條碼</button>
-      <label class="muted">${t.cover_path ? '換一張圖片' : '上傳圖片'}：
-        <input type="file" id="coverFile" accept="image/*" style="max-width:230px"></label>
-      <button class="danger" id="delTitle" style="margin-left:auto">刪除整筆</button>
-    </div>
-    <div id="copies"></div>`);
+    <div id="copies"></div>`, `
+    <button id="editTitle">編輯資料</button>
+    <button id="addCopy">加冊</button>
+    <button id="printAll">列印全部條碼</button>
+    <label class="file-button" for="coverFile">${t.cover_path ? '更換圖片' : '上傳圖片'}</label>
+    <input type="file" id="coverFile" accept="image/*" hidden>
+    <button class="danger" id="delTitle">刪除整筆</button>`, 'top');
 
   document.getElementById('editTitle').addEventListener('click', () => renderEditForm(t));
 
@@ -237,7 +243,7 @@ async function showDetail(id) {
   const box = document.getElementById('copies');
   for (const c of t.copies) {
     const wrap = document.createElement('div');
-    wrap.style.cssText = 'display:inline-block;margin:10px;text-align:center;vertical-align:top';
+    wrap.className = 'copy-card';
     wrap.appendChild(renderCode39(c.barcode));
     const label = document.createElement('div');
     label.textContent = c.barcode;
@@ -250,7 +256,8 @@ async function showDetail(id) {
     if (isOut) {
       // 借出中的冊不能改櫃位或狀態——那些欄位要等它回來才有意義。
       const outMark = document.createElement('div');
-      outMark.innerHTML = '<span class="badge badge-out">借出中</span>';
+      outMark.innerHTML = '<span class="badge badge-out">借出中</span>'
+        + '<span class="muted">　歸還後才能修改狀態</span>';
       ctrl.appendChild(outMark);
     } else {
       const shelfPick = document.createElement('select');
@@ -271,18 +278,24 @@ async function showDetail(id) {
       statusPick.style.marginTop = '4px';
       statusPick.title = '這一冊的狀況';
       statusPick.addEventListener('change', async () => {
+        statusPick.disabled = true;
         try {
-          await Api.put(`/api/copies/${c.id}`, { status: statusPick.value });
+          const updated = await Api.put(`/api/copies/${c.id}`, { status: statusPick.value });
+          c.status = updated.status;
           showToast('已更新狀態');
           loadList();
-        } catch (err) { showToast(err.message, 'error'); }
+        } catch (err) {
+          statusPick.value = c.status;
+          showToast(err.message, 'error');
+        } finally {
+          statusPick.disabled = false;
+        }
       });
       ctrl.append(shelfPick, statusPick);
     }
 
     const btns = document.createElement('div');
-    btns.className = 'no-print';
-    btns.style.marginTop = '4px';
+    btns.className = 'row copy-actions no-print';
     const printOne = document.createElement('button');
     printOne.textContent = '列印';
     printOne.addEventListener('click', () => printBarcodes([c]));
@@ -365,15 +378,12 @@ function renderEditForm(t) {
            <input id="e-pages" type="number" min="1" placeholder="頁數" style="max-width:120px"
                   value="${esc(t.pages ?? '')}">
          </div>`}
-    <div class="row">
-      <select id="e-category" style="max-width:200px">
+    <p><select id="e-category" style="max-width:200px">
         ${cats.map((c) => `<option value="${c.id}"${c.id === t.category_id ? ' selected' : ''}>
            ${esc(c.name)}</option>`).join('')}
-      </select>
-      <button class="primary" id="e-save">儲存</button>
-      <button id="e-cancel">取消</button>
-    </div>
-  `);
+      </select></p>
+  `, `<button class="primary" id="e-save">儲存</button>
+      <button id="e-cancel">取消</button>`);
 
   document.getElementById('e-cancel').addEventListener('click', () => showDetail(t.id));
 
@@ -593,8 +603,9 @@ document.getElementById('batchUpdate').addEventListener('click', async (e) => {
     if (category) done.push(`類型 ${result.changedTitles} 筆`);
     if (shelf) done.push(`櫃位 ${result.changedCopies} 冊`);
     if (status) done.push(`狀態 ${result.changedCopies} 冊`);
-    showToast(`已更新${done.join('，')}`);
     await loadList();
+    document.getElementById('selectedDialog').close();
+    showToast(`已更新${done.join('，')}`);
   } catch (err) { showToast(err.message, 'error'); }
   finally { e.target.disabled = false; }
 });

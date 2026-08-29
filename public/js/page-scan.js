@@ -1,6 +1,7 @@
 const resultEl = document.getElementById('result');
 const scanEl = document.getElementById('scan');
 const borrowerEl = document.getElementById('borrower');
+const batchCardEl = document.getElementById('batchCard');
 const batchCountEl = document.getElementById('batchCount');
 const batchEmptyEl = document.getElementById('batchEmpty');
 const batchTableEl = document.getElementById('batchTable');
@@ -19,6 +20,7 @@ function coverImg(path) {
 
 async function loadOpenLoans() {
   const rows = await Api.get('/api/loans?open=1');
+  document.getElementById('openLoanCount').textContent = `（${rows.length}）`;
   document.getElementById('openLoans').innerHTML = rows.length
     ? rows.map((r) => `<tr>
         <td>${esc(r.barcode)}</td>
@@ -47,6 +49,7 @@ function renderBatch() {
   const returnCount = items.length - borrowCount;
   const borrowerName = borrowerEl.selectedOptions[0]?.textContent ?? '';
 
+  batchCardEl.hidden = items.length === 0;
   batchCountEl.textContent = items.length;
   batchEmptyEl.hidden = items.length > 0;
   batchTableEl.hidden = items.length === 0;

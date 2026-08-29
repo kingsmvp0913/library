@@ -2,7 +2,7 @@ const express = require('express');
 const db = require('../db.js');
 
 const router = express.Router();
-const STATUSES = ['in', 'out', 'lost', 'repair'];
+const MANUAL_STATUSES = ['in', 'lost', 'repair'];
 
 /**
  * 某個書櫃上有哪些冊。盤點時要一眼看出哪幾本不在架上、在誰手上。
@@ -41,17 +41,27 @@ router.put('/:id', async (req, res, next) => {
     if (req.body.barcode !== undefined) {
       return res.status(400).json({ error: '編號已經貼在書上，不能修改' });
     }
-    if (req.body.status !== undefined && !STATUSES.includes(req.body.status)) {
+    if (req.body.status === 'out') {
+      return res.status(400).json({ error: '借出狀態只能由借還台更新' });
+    }
+    if (req.body.status !== undefined && !MANUAL_STATUSES.includes(req.body.status)) {
       return res.status(400).json({ error: '不認得的狀態' });
     }
     const cols = ['shelf_id', 'status', 'note'].filter((f) => req.body[f] !== undefined);
     if (!cols.length) return res.status(400).json({ error: '沒有要修改的欄位' });
     const sets = cols.map((f, i) => `${f} = $${i + 1}`).join(',');
+    const changingStatus = req.body.status !== undefined;
     const { rows } = await db.query(
-      `UPDATE copies SET ${sets} WHERE id = $${cols.length + 1} RETURNING *`,
+      `UPDATE copies SET ${sets} WHERE id = $${cols.length + 1}${changingStatus ? " AND status <> 'out'" : ''} RETURNING *`,
       [...cols.map((f) => req.body[f]), Number(req.params.id)]
     );
-    if (!rows.length) return res.status(404).json({ error: '找不到這一冊' });
+    if (!rows.length) {
+      const current = await db.query('SELECT status FROM copies WHERE id = $1', [Number(req.params.id)]);
+      if (changingStatus && current.rows[0]?.status === 'out') {
+        return res.status(409).json({ error: '這一冊正在借出中，請歸還後再修改狀態。' });
+      }
+      return res.status(404).json({ error: '找不到這一冊' });
+    }
     res.json(rows[0]);
   } catch (err) { next(err); }
 });

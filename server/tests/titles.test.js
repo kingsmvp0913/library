@@ -137,6 +137,30 @@ describe('PUT /api/copies/:id', () => {
     expect(res.body.status).toBe('lost');
   });
 
+  test('借出中的單冊不能手動修改狀態', async () => {
+    const { app, db, bookCat } = await freshApp();
+    const { body } = await request(app).post('/api/titles')
+      .send({ title: '借出中的書', category_id: bookCat, copies: 1 });
+    const copyId = body.copies[0].id;
+    await db.query(`UPDATE copies SET status = 'out' WHERE id = $1`, [copyId]);
+
+    const res = await request(app).put(`/api/copies/${copyId}`)
+      .send({ status: 'lost' }).expect(409);
+
+    expect(res.body.error).toBe('這一冊正在借出中，請歸還後再修改狀態。');
+    const { rows: [copy] } = await db.query('SELECT status FROM copies WHERE id = $1', [copyId]);
+    expect(copy.status).toBe('out');
+  });
+
+  test('借出狀態只能由借還台設定', async () => {
+    const { app, bookCat } = await freshApp();
+    const { body } = await request(app).post('/api/titles')
+      .send({ title: '測試書', category_id: bookCat, copies: 1 });
+    const res = await request(app).put(`/api/copies/${body.copies[0].id}`)
+      .send({ status: 'out' }).expect(400);
+    expect(res.body.error).toBe('借出狀態只能由借還台更新');
+  });
+
   // 編號是貼在實體書上的，改了就跟現實對不起來。必須擋。
   test('不可修改編號', async () => {
     const { app, bookCat } = await freshApp();
